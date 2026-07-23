@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid px-4 pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="fa-solid fa-clipboard-list text-warning me-2"></i>Bitácora de Auditoría</h2>
+        <a href="/dashboard" class="btn btn-outline-light btn-sm">Volver al panel</a>
+    </div>
+    <p class="text-secondary">Registro de correcciones hechas por admin/master sobre los registros de los choferes.</p>
+
+    <div class="card-custom p-3">
+        <div class="table-responsive">
+            <table class="table table-dark table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Fecha</th><th>Autorizado por</th><th>Rol</th><th>Entidad</th>
+                        <th>ID</th><th>Cambios</th><th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td>{{ r.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ r.usuario.nombre if r.usuario else '—' }} <span class="text-secondary small">({{ r.usuario.username if r.usuario else '' }})</span></td>
+                        <td><span class="badge bg-secondary">{{ r.usuario.rol|upper if r.usuario else '' }}</span></td>
+                        <td>{{ r.entidad }}</td>
+                        <td>#{{ r.entidad_id }}</td>
+                        <td class="small">{{ r.cambios }}</td>
+                        <td class="small">{{ r.motivo or '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center text-secondary">Aún no hay correcciones registradas.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
