@@ -269,7 +269,7 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr><th>Fecha</th><th>Ruta</th><th>Chofer</th><th>Flete</th><th>Comisión</th></tr>
+                                    <tr><th>Fecha</th><th>Ruta</th><th>Chofer</th><th>Flete</th><th>Comisión</th><th>Estado</th><th>Guía</th></tr>
                                 </thead>
                                 <tbody>
                                     {% for vj in viajes %}
@@ -278,10 +278,12 @@
                                         <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
                                         <td>{{ vj.chofer.nombre if vj.chofer else 'N/A' }}</td>
                                         <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
-                                        <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ vj.porcentaje_comision if vj.porcentaje_comision else 0 }}%)</td>
+                                        <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ "%.2f"|format(vj.porcentaje_comision if vj.porcentaje_comision else 0.0) }}%)</td>
+                                        <td><span class="badge bg-info text-dark">{{ vj.estado }}</span></td>
+                                        <td>{% if vj.guia %}<a href="/uploads/{{ vj.guia }}" target="_blank" class="badge bg-secondary text-decoration-none">Ver Guía</a>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="5" class="text-center text-secondary">No hay viajes registrados.</td></tr>
+                                    <tr><td colspan="7" class="text-center text-secondary">No hay viajes registrados.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -297,7 +299,7 @@
                 <div class="table-responsive">
                     <table class="table table-dark table-striped align-middle">
                         <thead>
-                            <tr><th>Fecha</th><th>Tipo</th><th>Vehículo</th><th>Chofer</th><th>KM</th><th>Costo</th><th>Fotos</th><th>Estado</th><th>Acción</th></tr>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Vehículo</th><th>Chofer</th><th>KM</th><th>Litros</th><th>Costo</th><th>Fotos</th><th>Estado</th><th>Acción</th></tr>
                         </thead>
                         <tbody>
                             {% for ev in eventos %}
@@ -307,6 +309,7 @@
                                 <td>{{ ev.vehiculo.placa if ev.vehiculo else 'N/A' }}</td>
                                 <td>{{ ev.chofer.nombre if ev.chofer else 'N/A' }}</td>
                                 <td>{{ ev.kilometraje|int }}</td>
+                                <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
                                 <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
                                 <td>
                                     {% if ev.foto_ticket %}<a href="/uploads/{{ ev.foto_ticket }}" target="_blank" class="badge bg-secondary text-decoration-none">Ticket</a>{% endif %}
@@ -328,7 +331,7 @@
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="9" class="text-center text-secondary">No hay registros de mantenimiento.</td></tr>
+                            <tr><td colspan="10" class="text-center text-secondary">No hay registros de mantenimiento.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>

@@ -55,6 +55,10 @@
                         <input type="number" step="0.1" name="kilometraje" class="form-control" required placeholder="Ej: 125000">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label fw-semibold">Litros de Combustible (si aplica)</label>
+                        <input type="number" step="0.01" name="litros" class="form-control" value="0.00" placeholder="Ej: 120.00">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label fw-semibold">Monto / Costo ($)</label>
                         <input type="number" step="0.01" name="monto_costo" class="form-control" value="0.00">
                     </div>
@@ -81,7 +85,7 @@
                 <div class="table-responsive">
                     <table class="table table-striped align-middle mb-0">
                         <thead>
-                            <tr><th>Fecha</th><th>Tipo</th><th>KM</th><th>Costo</th><th>Estado</th></tr>
+                            <tr><th>Fecha</th><th>Tipo</th><th>KM</th><th>Litros</th><th>Costo</th><th>Estado</th></tr>
                         </thead>
                         <tbody>
                             {% for ev in eventos %}
@@ -89,6 +93,7 @@
                                 <td>{{ ev.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
                                 <td>{{ ev.tipo }}</td>
                                 <td>{{ ev.kilometraje|int }}</td>
+                                <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
                                 <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
                                 <td>
                                     {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
@@ -97,7 +102,67 @@
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="5" class="text-center text-muted">Aún no has enviado registros.</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted">Aún no has enviado registros.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold">Registrar Despacho / Viaje</div>
+            <div class="card-body">
+                <form action="/chofer/crear-viaje" method="POST" enctype="multipart/form-data">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Origen</label>
+                            <input type="text" name="origen" class="form-control" required placeholder="Ej: Maracay">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Destino</label>
+                            <input type="text" name="destino" class="form-control" required placeholder="Ej: Caracas">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Monto del Flete ($)</label>
+                            <input type="number" step="0.01" name="monto_flete" id="montoFlete" class="form-control" value="0.00" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">% Comisión</label>
+                            <input type="number" step="0.1" name="porcentaje_comision" id="pctComision" class="form-control" value="10.0" required>
+                        </div>
+                    </div>
+                    <div class="alert alert-secondary py-2 mb-3">Tu comisión estimada: <strong id="comisionEstimada">$0.00</strong></div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Foto de la Guía de Despacho</label>
+                        <input type="file" name="guia" class="form-control" accept="image/*" capture="environment">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold">Registrar Despacho</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold">Mis Despachos</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead>
+                            <tr><th>Fecha</th><th>Ruta</th><th>Flete</th><th>Comisión</th><th>Guía</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for vj in viajes %}
+                            <tr>
+                                <td>{{ vj.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
+                                <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
+                                <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ "%.2f"|format(vj.porcentaje_comision if vj.porcentaje_comision else 0.0) }}%)</td>
+                                <td>{% if vj.guia %}<a href="/uploads/{{ vj.guia }}" target="_blank">Ver</a>{% else %}—{% endif %}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">Aún no has registrado despachos.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -152,6 +217,14 @@
         }
         setInterval(transmitirUbicacion, 30000);
         transmitirUbicacion();
+
+        function calcComision() {
+            var flete = parseFloat(document.getElementById('montoFlete').value) || 0;
+            var pct = parseFloat(document.getElementById('pctComision').value) || 0;
+            document.getElementById('comisionEstimada').textContent = '$' + (flete * pct / 100).toFixed(2);
+        }
+        var mf = document.getElementById('montoFlete'), pc = document.getElementById('pctComision');
+        if (mf && pc) { mf.addEventListener('input', calcComision); pc.addEventListener('input', calcComision); calcComision(); }
     </script>
 </body>
 </html>

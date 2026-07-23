@@ -101,6 +101,7 @@ class Viaje(db.Model):
     porcentaje_comision = db.Column(db.Float, default=0.0, nullable=False)
     monto_comision = db.Column(db.Float, default=0.0, nullable=False)
     estado = db.Column(db.String(20), default='Asignado', nullable=False)
+    guia = db.Column(db.String(255))  # Foto/documento de la guía de despacho
     fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     vehiculo = db.relationship('Vehiculo', backref='viajes')
@@ -114,6 +115,7 @@ class EventoVehiculo(db.Model):
     chofer_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
     tipo = db.Column(db.String(40), nullable=False)  # Combustible, Aceite/Filtro, Cauchos, Reparacion...
     kilometraje = db.Column(db.Float, default=0.0)
+    litros = db.Column(db.Float, default=0.0)  # Cantidad de combustible cargado
     monto_costo = db.Column(db.Float, default=0.0)
     detalles = db.Column(db.Text)
     foto_ticket = db.Column(db.String(255))
@@ -324,8 +326,8 @@ def crear_viaje():
     destino = (request.form.get('destino') or '').strip()
     vehiculo_id = request.form.get('vehiculo_id')
     chofer_id = request.form.get('chofer_id')
-    monto_flete = float(request.form.get('monto_flete') or 0.0)
-    porcentaje_comision = float(request.form.get('porcentaje_comision') or 0.0)
+    monto_flete = round(float(request.form.get('monto_flete') or 0.0), 2)
+    porcentaje_comision = round(float(request.form.get('porcentaje_comision') or 0.0), 2)
 
     if not (origen and destino and vehiculo_id and chofer_id):
         flash('Faltan datos para asignar el viaje.', 'danger')
@@ -376,7 +378,11 @@ def panel_chofer():
                .filter_by(chofer_id=current_user.id)
                .order_by(EventoVehiculo.fecha.desc())
                .limit(20).all())
-    return render_template('chofer.html', vehiculo=vehiculo, eventos=eventos)
+    viajes = (Viaje.query
+              .filter_by(chofer_id=current_user.id)
+              .order_by(Viaje.fecha.desc())
+              .limit(20).all())
+    return render_template('chofer.html', vehiculo=vehiculo, eventos=eventos, viajes=viajes)
 
 
 @app.route('/chofer/registrar-evento', methods=['POST'])
@@ -387,8 +393,9 @@ def registrar_evento():
         return redirect(url_for('panel_chofer'))
 
     tipo = request.form.get('tipo') or 'Combustible'
-    kilometraje = float(request.form.get('kilometraje') or 0.0)
-    monto_costo = float(request.form.get('monto_costo') or 0.0)
+    kilometraje = round(float(request.form.get('kilometraje') or 0.0), 2)
+    litros = round(float(request.form.get('litros') or 0.0), 2)
+    monto_costo = round(float(request.form.get('monto_costo') or 0.0), 2)
     detalles = request.form.get('detalles')
 
     foto_ticket = guardar_foto(request.files.get('foto_ticket'))
@@ -399,6 +406,7 @@ def registrar_evento():
         chofer_id=current_user.id,
         tipo=tipo,
         kilometraje=kilometraje,
+        litros=litros,
         monto_costo=monto_costo,
         detalles=detalles,
         foto_ticket=foto_ticket,
@@ -408,6 +416,42 @@ def registrar_evento():
     db.session.add(evento)
     db.session.commit()
     flash('Registro enviado. Queda pendiente de confirmación por el administrador.', 'success')
+    return redirect(url_for('panel_chofer'))
+
+
+@app.route('/chofer/crear-viaje', methods=['POST'])
+@roles_required(ROL_CHOFER)
+def chofer_crear_viaje():
+    if not current_user.vehiculo_id:
+        flash('No tienes un vehículo asignado.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
+    origen = (request.form.get('origen') or '').strip()
+    destino = (request.form.get('destino') or '').strip()
+    monto_flete = round(float(request.form.get('monto_flete') or 0.0), 2)
+    porcentaje_comision = round(float(request.form.get('porcentaje_comision') or 0.0), 2)
+
+    if not (origen and destino):
+        flash('Indica origen y destino del despacho.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
+    guia = guardar_foto(request.files.get('guia'))
+    monto_comision = round(monto_flete * porcentaje_comision / 100.0, 2)
+    viaje = Viaje(
+        origen=origen,
+        destino=destino,
+        vehiculo_id=current_user.vehiculo_id,
+        chofer_id=current_user.id,
+        monto_flete=monto_flete,
+        porcentaje_comision=porcentaje_comision,
+        monto_comision=monto_comision,
+        guia=guia,
+        estado='Reportado',
+        fecha=datetime.now(),
+    )
+    db.session.add(viaje)
+    db.session.commit()
+    flash(f'Despacho registrado. Tu comisión es ${monto_comision:,.2f}.', 'success')
     return redirect(url_for('panel_chofer'))
 
 
@@ -521,7 +565,7 @@ def reporte_excel():
                          bottom=Side(style='thin', color='CCCCCC'))
 
     headers = ["ID", "Fecha", "Origen", "Destino", "Chofer", "Placa", "Modelo",
-               "Flete ($)", "% Com.", "Comisión ($)"]
+               "Flete ($)", "% Com.", "Comisión ($)", "Estado", "Guía"]
     ws.append(headers)
     ws.row_dimensions[1].height = 25
     for col_num in range(1, len(headers) + 1):
@@ -542,6 +586,8 @@ def reporte_excel():
             v.monto_flete,
             v.porcentaje_comision,
             v.monto_comision,
+            v.estado,
+            "Sí" if v.guia else "No",
         ])
 
     ncols = len(headers)
@@ -595,6 +641,8 @@ def reporte_pdf():
                 <td>{vehiculo_placa}</td>
                 <td style="text-align: right;">${v.monto_flete:,.2f}</td>
                 <td style="text-align: right;">${v.monto_comision:,.2f}</td>
+                <td>{v.estado}</td>
+                <td>{'Sí' if v.guia else 'No'}</td>
             </tr>
         """
 
@@ -625,6 +673,7 @@ def reporte_pdf():
             <thead><tr>
                 <th>Fecha</th><th>Ruta</th><th>Chofer</th><th>Vehículo</th>
                 <th style="text-align:right;">Flete</th><th style="text-align:right;">Comisión</th>
+                <th>Estado</th><th>Guía</th>
             </tr></thead>
             <tbody>{filas}</tbody>
         </table>
@@ -675,7 +724,7 @@ def reporte_mantenimiento_excel():
                          bottom=Side(style='thin', color='CCCCCC'))
 
     headers = ["ID", "Fecha", "Tipo", "Vehículo", "Chofer", "Kilometraje",
-               "Costo ($)", "Estado", "Detalles"]
+               "Litros", "Costo ($)", "Estado", "Detalles"]
     ws.append(headers)
     ws.row_dimensions[1].height = 25
     for col_num in range(1, len(headers) + 1):
@@ -691,8 +740,9 @@ def reporte_mantenimiento_excel():
             e.tipo,
             e.vehiculo.placa if e.vehiculo else "N/A",
             e.chofer.nombre if e.chofer else "N/A",
-            e.kilometraje,
-            e.monto_costo,
+            round(e.kilometraje or 0, 2),
+            round(e.litros or 0, 2),
+            round(e.monto_costo or 0, 2),
             e.estado,
             e.detalles or "",
         ])
@@ -703,12 +753,14 @@ def reporte_mantenimiento_excel():
             cell.border = border_thin
             cell.alignment = Alignment(vertical="center")
             if cell.column == 7:
+                cell.number_format = '#,##0.00'
+            if cell.column == 8:
                 cell.number_format = '$#,##0.00'
 
     total_row = ws.max_row + 1
-    ws.cell(row=total_row, column=6, value="TOTAL COSTO:").font = Font(name="Arial", size=11, bold=True)
-    ws.cell(row=total_row, column=6).alignment = Alignment(horizontal="right")
-    c = ws.cell(row=total_row, column=7, value=f"=SUM(G2:G{total_row-1})")
+    ws.cell(row=total_row, column=7, value="TOTAL COSTO:").font = Font(name="Arial", size=11, bold=True)
+    ws.cell(row=total_row, column=7).alignment = Alignment(horizontal="right")
+    c = ws.cell(row=total_row, column=8, value=f"=SUM(H2:H{total_row-1})")
     c.font = Font(name="Arial", size=11, bold=True)
     c.number_format = '$#,##0.00'
 
@@ -743,6 +795,7 @@ def reporte_mantenimiento_pdf():
                 <td>{e.vehiculo.placa if e.vehiculo else 'N/A'}</td>
                 <td>{e.chofer.nombre if e.chofer else 'N/A'}</td>
                 <td style="text-align:right;">{e.kilometraje:,.0f}</td>
+                <td style="text-align:right;">{(e.litros or 0):,.2f}</td>
                 <td style="text-align:right;">${e.monto_costo:,.2f}</td>
                 <td>{e.estado}</td>
             </tr>
@@ -775,7 +828,7 @@ def reporte_mantenimiento_pdf():
         <table>
             <thead><tr>
                 <th>Fecha</th><th>Tipo</th><th>Vehículo</th><th>Chofer</th>
-                <th style="text-align:right;">KM</th><th style="text-align:right;">Costo</th><th>Estado</th>
+                <th style="text-align:right;">KM</th><th style="text-align:right;">Litros</th><th style="text-align:right;">Costo</th><th>Estado</th>
             </tr></thead>
             <tbody>{filas}</tbody>
         </table>
