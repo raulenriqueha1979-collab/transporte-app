@@ -37,22 +37,44 @@
         </div>
 
         {% if vehiculo %}
+        <div class="d-flex justify-content-end mb-2">
+            <a href="/ayuda" class="btn btn-outline-secondary btn-sm">❓ Ayuda / ¿Cómo funciona?</a>
+        </div>
+
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-white fw-bold">Registrar Evento (Combustible / Mantenimiento)</div>
+            <div class="card-header bg-white fw-bold">Registrar Gasto (Combustible / Mantenimiento / Peaje / Otros)</div>
             <div class="card-body">
                 <form action="/chofer/registrar-evento" method="POST" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Tipo de Registro</label>
-                        <select name="tipo" class="form-select" required>
-                            <option value="Combustible">Echar Combustible</option>
-                            <option value="Aceite/Filtro">Cambio de Aceite / Filtro</option>
-                            <option value="Cauchos">Cambio de Cauchos</option>
-                            <option value="Reparacion">Reparación / Taller</option>
-                        </select>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Tipo de Registro</label>
+                            <select name="tipo" class="form-select" required>
+                                <option value="Combustible">Echar Combustible</option>
+                                <option value="Aceite/Filtro">Cambio de Aceite / Filtro</option>
+                                <option value="Cauchos">Cambio de Cauchos</option>
+                                <option value="Reparacion">Reparación / Taller / Repuestos</option>
+                                <option value="Peaje">Peaje</option>
+                                <option value="Otros">Otros Gastos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Fecha de la Operación</label>
+                            <input type="date" name="fecha" class="form-control" value="{{ hoy }}" required>
+                        </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Kilometraje Actual (Odómetro)</label>
-                        <input type="number" step="0.1" name="kilometraje" class="form-control" required placeholder="Ej: 125000">
+                        <label class="form-label fw-semibold">Viaje / Despacho asociado (opcional)</label>
+                        <select name="viaje_id" class="form-select">
+                            <option value="none">— Sin viaje asociado —</option>
+                            {% for vj in viajes %}
+                            <option value="{{ vj.id }}">#{{ vj.id }} · {{ vj.fecha.strftime('%Y-%m-%d') }} · {{ vj.origen }} ➔ {{ vj.destino }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Asocia el gasto (peaje, combustible, etc.) al viaje realizado.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Kilometraje Actual (Odómetro, si aplica)</label>
+                        <input type="number" step="0.1" name="kilometraje" class="form-control" value="0" placeholder="Ej: 125000">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Litros de Combustible (si aplica)</label>
@@ -63,11 +85,11 @@
                         <input type="number" step="0.01" name="monto_costo" class="form-control" value="0.00">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Foto del Ticket / Factura</label>
+                        <label class="form-label fw-semibold">Foto del Recibo / Factura</label>
                         <input type="file" name="foto_ticket" class="form-control" accept="image/*" capture="environment">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Foto del Tablero / Odómetro</label>
+                        <label class="form-label fw-semibold">Foto del Tablero / Odómetro (si aplica)</label>
                         <input type="file" name="foto_odometro" class="form-control" accept="image/*" capture="environment">
                     </div>
                     <div class="mb-3">
@@ -85,13 +107,14 @@
                 <div class="table-responsive">
                     <table class="table table-striped align-middle mb-0">
                         <thead>
-                            <tr><th>Fecha</th><th>Tipo</th><th>KM</th><th>Litros</th><th>Costo</th><th>Estado</th></tr>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Viaje</th><th>KM</th><th>Litros</th><th>Costo</th><th>Estado</th></tr>
                         </thead>
                         <tbody>
                             {% for ev in eventos %}
                             <tr>
-                                <td>{{ ev.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ ev.fecha.strftime('%Y-%m-%d') }}</td>
                                 <td>{{ ev.tipo }}</td>
+                                <td>{% if ev.viaje %}#{{ ev.viaje.id }} {{ ev.viaje.origen }}➔{{ ev.viaje.destino }}{% else %}—{% endif %}</td>
                                 <td>{{ ev.kilometraje|int }}</td>
                                 <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
                                 <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
@@ -102,7 +125,7 @@
                                 </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="6" class="text-center text-muted">Aún no has enviado registros.</td></tr>
+                            <tr><td colspan="7" class="text-center text-muted">Aún no has enviado registros.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -170,6 +193,29 @@
             </div>
         </div>
 
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold">Mi Reporte Financiero por Viaje (¿Cuánto me quedó?)</div>
+            <div class="card-body">
+                <form action="/reporte/financiero/excel" method="GET" class="row g-2 align-items-end" target="_blank" id="finForm">
+                    <div class="col-md-4">
+                        <label class="form-label small">Desde</label>
+                        <input type="date" name="fecha_desde" id="fd" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Hasta</label>
+                        <input type="date" name="fecha_hasta" id="fh" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4 d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-sm">📊 Excel</button>
+                    </div>
+                </form>
+                <div class="mt-2">
+                    <a href="/reporte/financiero/pdf" target="_blank" class="btn btn-outline-danger btn-sm" id="pdfLink">📄 PDF</a>
+                    <small class="text-muted d-block mt-1">Muestra flete, comisión, gastos (peajes/combustible) y ganancia neta de tus viajes.</small>
+                </div>
+            </div>
+        </div>
+
         <div class="alert alert-info small d-flex align-items-center gap-2" id="gpsStatus">
             <span class="spinner-border spinner-border-sm"></span>
             Activando envío de ubicación GPS...
@@ -225,6 +271,18 @@
         }
         var mf = document.getElementById('montoFlete'), pc = document.getElementById('pctComision');
         if (mf && pc) { mf.addEventListener('input', calcComision); pc.addEventListener('input', calcComision); calcComision(); }
+
+        function syncPdf() {
+            var fd = document.getElementById('fd'), fh = document.getElementById('fh'), pdf = document.getElementById('pdfLink');
+            if (!pdf) return;
+            var params = [];
+            if (fd && fd.value) params.push('fecha_desde=' + fd.value);
+            if (fh && fh.value) params.push('fecha_hasta=' + fh.value);
+            pdf.href = '/reporte/financiero/pdf' + (params.length ? '?' + params.join('&') : '');
+        }
+        var fdEl = document.getElementById('fd'), fhEl = document.getElementById('fh');
+        if (fdEl) fdEl.addEventListener('change', syncPdf);
+        if (fhEl) fhEl.addEventListener('change', syncPdf);
     </script>
 </body>
 </html>

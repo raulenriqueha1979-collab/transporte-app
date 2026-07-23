@@ -30,6 +30,7 @@ COLUMNAS_NUEVAS = {
     },
     'evento_vehiculo': {
         'litros': "FLOAT DEFAULT 0",
+        'viaje_id': "INTEGER",
     },
 }
 

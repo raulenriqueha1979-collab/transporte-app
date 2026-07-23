@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, time
+from datetime import datetime, time, date
 from functools import wraps
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
@@ -113,7 +113,8 @@ class EventoVehiculo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'), nullable=False)
     chofer_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
-    tipo = db.Column(db.String(40), nullable=False)  # Combustible, Aceite/Filtro, Cauchos, Reparacion...
+    tipo = db.Column(db.String(40), nullable=False)  # Combustible, Aceite/Filtro, Cauchos, Reparacion, Peaje, Otros...
+    viaje_id = db.Column(db.Integer, db.ForeignKey('viaje.id'))  # Gasto asociado a un viaje/despacho
     kilometraje = db.Column(db.Float, default=0.0)
     litros = db.Column(db.Float, default=0.0)  # Cantidad de combustible cargado
     monto_costo = db.Column(db.Float, default=0.0)
@@ -121,13 +122,14 @@ class EventoVehiculo(db.Model):
     foto_ticket = db.Column(db.String(255))
     foto_odometro = db.Column(db.String(255))
     estado = db.Column(db.String(20), default='Pendiente', nullable=False)  # Pendiente / Confirmado / Rechazado
-    fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)  # Fecha de la operación
     confirmado_por_id = db.Column(db.Integer, db.ForeignKey('usuario.id'))
     fecha_confirmacion = db.Column(db.DateTime)
 
     vehiculo = db.relationship('Vehiculo', backref='eventos')
     chofer = db.relationship('Usuario', foreign_keys=[chofer_id])
     confirmado_por = db.relationship('Usuario', foreign_keys=[confirmado_por_id])
+    viaje = db.relationship('Viaje', backref='gastos')
 
 
 class RegistroGPS(db.Model):
@@ -136,6 +138,19 @@ class RegistroGPS(db.Model):
     latitud = db.Column(db.Float, nullable=False)
     longitud = db.Column(db.Float, nullable=False)
     fecha = db.Column(db.DateTime, default=datetime.now)
+
+
+class Auditoria(db.Model):
+    """Bitácora de correcciones hechas por admin/master sobre registros de choferes."""
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)  # quién hizo el cambio
+    entidad = db.Column(db.String(40), nullable=False)  # 'EventoVehiculo' o 'Viaje'
+    entidad_id = db.Column(db.Integer, nullable=False)
+    cambios = db.Column(db.Text, nullable=False)  # resumen campo: anterior -> nuevo
+    motivo = db.Column(db.Text)
+    fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)
+
+    usuario = db.relationship('Usuario')
 
 
 @login_manager.user_loader
@@ -369,6 +384,104 @@ def confirmar_evento(evento_id):
     return redirect(url_for('dashboard'))
 
 
+# --- Corrección de registros con clave de autorización + auditoría ----------
+def _registrar_auditoria(entidad, entidad_id, cambios, motivo):
+    if not cambios:
+        return False
+    aud = Auditoria(
+        usuario_id=current_user.id,
+        entidad=entidad,
+        entidad_id=entidad_id,
+        cambios="; ".join(cambios),
+        motivo=(motivo or '').strip() or None,
+    )
+    db.session.add(aud)
+    return True
+
+
+@app.route('/admin/editar-evento/<int:evento_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def editar_evento(evento_id):
+    evento = EventoVehiculo.query.get_or_404(evento_id)
+
+    # Autorización: reingresar la clave del propio admin/master
+    if not current_user.check_password(request.form.get('clave_autorizacion') or ''):
+        flash('Clave de autorización incorrecta. No se guardaron los cambios.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    nuevos = {
+        'tipo': (request.form.get('tipo') or evento.tipo).strip(),
+        'kilometraje': round(float(request.form.get('kilometraje') or 0.0), 2),
+        'litros': round(float(request.form.get('litros') or 0.0), 2),
+        'monto_costo': round(float(request.form.get('monto_costo') or 0.0), 2),
+        'detalles': (request.form.get('detalles') or '').strip() or None,
+    }
+    cambios = []
+    for campo, nuevo in nuevos.items():
+        anterior = getattr(evento, campo)
+        if (anterior or None) != (nuevo or None):
+            cambios.append(f"{campo}: '{anterior}' -> '{nuevo}'")
+            setattr(evento, campo, nuevo)
+
+    if _registrar_auditoria('EventoVehiculo', evento.id, cambios, request.form.get('motivo')):
+        db.session.commit()
+        flash(f'Registro #{evento.id} corregido y guardado en auditoría.', 'success')
+    else:
+        flash('No hubo cambios que guardar.', 'info')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/editar-viaje/<int:viaje_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def editar_viaje(viaje_id):
+    viaje = Viaje.query.get_or_404(viaje_id)
+
+    if not current_user.check_password(request.form.get('clave_autorizacion') or ''):
+        flash('Clave de autorización incorrecta. No se guardaron los cambios.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    origen = (request.form.get('origen') or viaje.origen).strip()
+    destino = (request.form.get('destino') or viaje.destino).strip()
+    monto_flete = round(float(request.form.get('monto_flete') or 0.0), 2)
+    porcentaje_comision = round(float(request.form.get('porcentaje_comision') or 0.0), 2)
+    monto_comision = round(monto_flete * porcentaje_comision / 100.0, 2)
+
+    nuevos = {
+        'origen': origen,
+        'destino': destino,
+        'monto_flete': monto_flete,
+        'porcentaje_comision': porcentaje_comision,
+        'monto_comision': monto_comision,
+    }
+    cambios = []
+    for campo, nuevo in nuevos.items():
+        anterior = getattr(viaje, campo)
+        if anterior != nuevo:
+            cambios.append(f"{campo}: '{anterior}' -> '{nuevo}'")
+            setattr(viaje, campo, nuevo)
+
+    if _registrar_auditoria('Viaje', viaje.id, cambios, request.form.get('motivo')):
+        db.session.commit()
+        flash(f'Despacho #{viaje.id} corregido y guardado en auditoría.', 'success')
+    else:
+        flash('No hubo cambios que guardar.', 'info')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/auditoria')
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def ver_auditoria():
+    registros = Auditoria.query.order_by(Auditoria.fecha.desc()).limit(200).all()
+    return render_template('auditoria.html', registros=registros)
+
+
+# --- Ayuda / explicación del sistema ----------------------------------------
+@app.route('/ayuda')
+@login_required
+def ayuda():
+    return render_template('ayuda.html')
+
+
 # --- Panel del chofer -------------------------------------------------------
 @app.route('/chofer')
 @roles_required(ROL_CHOFER)
@@ -382,7 +495,8 @@ def panel_chofer():
               .filter_by(chofer_id=current_user.id)
               .order_by(Viaje.fecha.desc())
               .limit(20).all())
-    return render_template('chofer.html', vehiculo=vehiculo, eventos=eventos, viajes=viajes)
+    return render_template('chofer.html', vehiculo=vehiculo, eventos=eventos,
+                           viajes=viajes, hoy=date.today().isoformat())
 
 
 @app.route('/chofer/registrar-evento', methods=['POST'])
@@ -398,6 +512,15 @@ def registrar_evento():
     monto_costo = round(float(request.form.get('monto_costo') or 0.0), 2)
     detalles = request.form.get('detalles')
 
+    fecha_op = parse_fecha(request.form.get('fecha')) or datetime.now()
+
+    viaje_id = request.form.get('viaje_id')
+    veh_viaje = None
+    if viaje_id and viaje_id not in ('none', '', '0'):
+        # Solo puede asociar sus propios viajes
+        v = Viaje.query.filter_by(id=int(viaje_id), chofer_id=current_user.id).first()
+        veh_viaje = v.id if v else None
+
     foto_ticket = guardar_foto(request.files.get('foto_ticket'))
     foto_odometro = guardar_foto(request.files.get('foto_odometro'))
 
@@ -405,6 +528,7 @@ def registrar_evento():
         vehiculo_id=current_user.vehiculo_id,
         chofer_id=current_user.id,
         tipo=tipo,
+        viaje_id=veh_viaje,
         kilometraje=kilometraje,
         litros=litros,
         monto_costo=monto_costo,
@@ -412,6 +536,7 @@ def registrar_evento():
         foto_ticket=foto_ticket,
         foto_odometro=foto_odometro,
         estado='Pendiente',
+        fecha=fecha_op,
     )
     db.session.add(evento)
     db.session.commit()
@@ -840,6 +965,182 @@ def reporte_mantenimiento_pdf():
     HTML(string=html_content).write_pdf(tmp_pdf.name)
     tmp_pdf.close()
     filename = f"Reporte_Mantenimiento_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return send_file(tmp_pdf.name, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+
+# --- Reportes: Financiero por viaje (ingresos / gastos / ganancias) ---------
+def _finanzas_viajes(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None):
+    """Devuelve lista de dicts con ingreso, gastos, comisión y ganancia por viaje.
+
+    Ganancia neta = flete - comisión del chofer - gastos asociados confirmados.
+    """
+    query = Viaje.query
+    d = parse_fecha(fecha_desde)
+    h = parse_fecha(fecha_hasta, fin_dia=True)
+    if d:
+        query = query.filter(Viaje.fecha >= d)
+    if h:
+        query = query.filter(Viaje.fecha <= h)
+    if vehiculo_id and str(vehiculo_id) not in ('none', '', '0'):
+        query = query.filter(Viaje.vehiculo_id == int(vehiculo_id))
+    if chofer_id:
+        query = query.filter(Viaje.chofer_id == int(chofer_id))
+    viajes = query.order_by(Viaje.fecha).all()
+
+    filas = []
+    for v in viajes:
+        gastos = sum((g.monto_costo or 0.0) for g in v.gastos if g.estado != 'Rechazado')
+        ingreso = v.monto_flete or 0.0
+        comision = v.monto_comision or 0.0
+        ganancia = round(ingreso - comision - gastos, 2)
+        filas.append({
+            'viaje': v,
+            'fecha': v.fecha,
+            'ruta': f"{v.origen} → {v.destino}",
+            'vehiculo': v.vehiculo.placa if v.vehiculo else 'N/A',
+            'chofer': v.chofer.nombre if v.chofer else 'N/A',
+            'ingreso': round(ingreso, 2),
+            'comision': round(comision, 2),
+            'gastos': round(gastos, 2),
+            'ganancia': ganancia,
+        })
+    return filas
+
+
+def _finanzas_scope():
+    """Filtros según rol: el chofer solo ve sus propios viajes."""
+    fd = request.args.get('fecha_desde')
+    fh = request.args.get('fecha_hasta')
+    veh = request.args.get('vehiculo_id')
+    chofer_id = current_user.id if current_user.es_chofer else None
+    return _finanzas_viajes(fd, fh, veh, chofer_id), fd, fh
+
+
+@app.route('/reporte/financiero/excel', methods=['GET'])
+@login_required
+def reporte_financiero_excel():
+    filas, fd, fh = _finanzas_scope()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ingresos, Gastos y Ganancias"
+
+    header_fill = PatternFill(start_color="065F46", end_color="065F46", fill_type="solid")
+    header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+
+    headers = ["ID", "Fecha", "Ruta", "Vehículo", "Chofer",
+               "Ingreso Flete ($)", "Comisión Chofer ($)", "Gastos ($)", "Ganancia Neta ($)"]
+    ws.append(headers)
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for f in filas:
+        ws.append([
+            f['viaje'].id,
+            f['fecha'].strftime('%Y-%m-%d'),
+            f['ruta'],
+            f['vehiculo'],
+            f['chofer'],
+            f['ingreso'],
+            f['comision'],
+            f['gastos'],
+            f['ganancia'],
+        ])
+
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=6, max_col=9):
+        for cell in row:
+            cell.number_format = '$#,##0.00'
+
+    total_row = ws.max_row + 1
+    ws.cell(row=total_row, column=5, value="TOTALES:").font = Font(bold=True)
+    for col in (6, 7, 8, 9):
+        letter = get_column_letter(col)
+        c = ws.cell(row=total_row, column=col, value=f"=SUM({letter}2:{letter}{total_row-1})")
+        c.font = Font(bold=True)
+        c.number_format = '$#,##0.00'
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        ws.column_dimensions[get_column_letter(col[0].column)].width = max(max_len + 4, 12)
+
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    wb.save(tmp_file.name)
+    tmp_file.close()
+    filename = f"Reporte_Financiero_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(tmp_file.name, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/reporte/financiero/pdf', methods=['GET'])
+@login_required
+def reporte_financiero_pdf():
+    filas, fd, fh = _finanzas_scope()
+    tot_ing = sum(f['ingreso'] for f in filas)
+    tot_com = sum(f['comision'] for f in filas)
+    tot_gas = sum(f['gastos'] for f in filas)
+    tot_gan = sum(f['ganancia'] for f in filas)
+
+    cuerpo = ""
+    for f in filas:
+        cuerpo += f"""
+            <tr>
+                <td>{f['fecha'].strftime('%Y-%m-%d')}</td>
+                <td>{f['ruta']}</td>
+                <td>{f['vehiculo']}</td>
+                <td>{f['chofer']}</td>
+                <td style="text-align:right;">${f['ingreso']:,.2f}</td>
+                <td style="text-align:right;">${f['comision']:,.2f}</td>
+                <td style="text-align:right;">${f['gastos']:,.2f}</td>
+                <td style="text-align:right;">${f['ganancia']:,.2f}</td>
+            </tr>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+        @page {{ size: A4 landscape; margin: 15mm; }}
+        body {{ font-family: Arial, sans-serif; color: #111827; font-size: 10pt; }}
+        .header {{ border-bottom: 2px solid #059669; padding-bottom: 10px; margin-bottom: 20px; }}
+        h1 {{ color: #065F46; font-size: 18pt; margin: 0 0 5px 0; }}
+        .meta {{ margin-bottom: 15px; font-size: 10pt; background: #F0FDF4; padding: 10px; border-radius: 6px; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        th {{ background-color: #065F46; color: white; text-align: left; padding: 7px; font-size: 9pt; }}
+        td {{ padding: 7px; border-bottom: 1px solid #E5E7EB; font-size: 9pt; }}
+        tfoot td {{ font-weight: bold; background:#F0FDF4; }}
+    </style></head><body>
+        <div class="header"><h1>Informe de Ingresos, Gastos y Ganancias</h1>
+        <div>Sistema de Gestión de Transporte</div></div>
+        <div class="meta">
+            <strong>Filtro de Fechas:</strong> {fd or 'Inicio'} al {fh or 'Actual'} <br>
+            <strong>Emitido por:</strong> {current_user.nombre} ({current_user.rol}) <br>
+            <strong>Fecha de Emisión:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} <br>
+            <strong>Viajes:</strong> {len(filas)}
+        </div>
+        <table>
+            <thead><tr>
+                <th>Fecha</th><th>Ruta</th><th>Vehículo</th><th>Chofer</th>
+                <th style="text-align:right;">Ingreso</th><th style="text-align:right;">Comisión</th>
+                <th style="text-align:right;">Gastos</th><th style="text-align:right;">Ganancia Neta</th>
+            </tr></thead>
+            <tbody>{cuerpo}</tbody>
+            <tfoot><tr>
+                <td colspan="4" style="text-align:right;">TOTALES:</td>
+                <td style="text-align:right;">${tot_ing:,.2f}</td>
+                <td style="text-align:right;">${tot_com:,.2f}</td>
+                <td style="text-align:right;">${tot_gas:,.2f}</td>
+                <td style="text-align:right;">${tot_gan:,.2f}</td>
+            </tr></tfoot>
+        </table>
+    </body></html>
+    """
+
+    tmp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+    HTML(string=html_content).write_pdf(tmp_pdf.name)
+    tmp_pdf.close()
+    filename = f"Reporte_Financiero_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     return send_file(tmp_pdf.name, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 
