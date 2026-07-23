@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Chofer - Sistema Integral de Transporte</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-dark bg-primary mb-3 shadow-sm">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">🚚 Sistema Integral de Transporte</span>
+            <a href="/logout" class="btn btn-outline-light btn-sm">Salir</a>
+        </div>
+    </nav>
+
+    <div class="container mb-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Bienvenido, <strong>{{ current_user.nombre }}</strong></h6>
+                <h5 class="card-title text-secondary">Vehículo Asignado</h5>
+                {% if vehiculo %}
+                    <p class="h3 text-success mb-1">{{ vehiculo.placa }}</p>
+                    <small class="text-muted">Modelo: {{ vehiculo.modelo }} | Odómetro Actual: {{ vehiculo.kilometraje_actual }} KM</small>
+                {% else %}
+                    <p class="text-danger mb-0">No tienes un vehículo asignado. Contacta al Administrador.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if vehiculo %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold">Registrar Evento (Combustible / Mantenimiento)</div>
+            <div class="card-body">
+                <form action="/chofer/registrar-evento" method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tipo de Registro</label>
+                        <select name="tipo" class="form-select" required>
+                            <option value="Combustible">Echar Combustible</option>
+                            <option value="Aceite/Filtro">Cambio de Aceite / Filtro</option>
+                            <option value="Cauchos">Cambio de Cauchos</option>
+                            <option value="Reparacion">Reparación / Taller</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Kilometraje Actual (Odómetro)</label>
+                        <input type="number" step="0.1" name="kilometraje" class="form-control" required placeholder="Ej: 125000">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Monto / Costo ($)</label>
+                        <input type="number" step="0.01" name="monto_costo" class="form-control" value="0.00">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Foto del Ticket / Factura</label>
+                        <input type="file" name="foto_ticket" class="form-control" accept="image/*" capture="environment">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Foto del Tablero / Odómetro</label>
+                        <input type="file" name="foto_odometro" class="form-control" accept="image/*" capture="environment">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Detalles / Observaciones</label>
+                        <textarea name="detalles" class="form-control" rows="2" placeholder="Notas adicionales del gasto..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold">Guardar Registro</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- CRÉDITOS DE DESARROLLO -->
+    <footer class="text-center py-3 text-muted small mt-auto bg-white border-top">
+        Desarrollado por <strong>RAUL E. HERNANDEZ A.</strong><br>
+        📞 Teléfono: 0412-880-76-41 | ✉️ Correo: raulenriqueha1979@gmail.com
+    </footer>
+
+    <script>
+        function transmitirUbicacion() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    fetch('/api/actualizar-gps', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            latitud: position.coords.latitude,
+                            longitud: position.coords.longitude
+                        })
+                    });
+                }, function(err) {
+                    console.log("GPS no activado.");
+                }, { enableHighAccuracy: true });
+            }
+        }
+        setInterval(transmitirUbicacion, 30000);
+        transmitirUbicacion();
+    </script>
+</body>
+</html>

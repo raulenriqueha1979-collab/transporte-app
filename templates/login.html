@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-md-4">
+        <div class="card-custom p-4 border border-secondary shadow-lg">
+            <div class="text-center mb-4">
+                <i class="fa-solid fa-truck-fast text-danger fs-1 mb-2"></i>
+                <h3 class="fw-bold text-white">Control de Transporte</h3>
+                <p class="text-secondary small">Inicie sesión para acceder al sistema</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} text-center small py-2">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('login') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label small text-secondary">Usuario</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark text-secondary border-secondary"><i class="fa-solid fa-user"></i></span>
+                        <input type="text" name="username" class="form-control bg-dark text-white border-secondary" placeholder="Ingrese su usuario" required autofocus>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small text-secondary">Contraseña</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark text-secondary border-secondary"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password" id="passwordField" name="password" class="form-control bg-dark text-white border-secondary" placeholder="••••••••" required>
+                        <button class="btn btn-outline-secondary border-secondary text-secondary" type="button" id="togglePassword" onclick="verContraseña()">
+                            <i class="fa-solid fa-eye" id="eyeIcon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-danger w-100 fw-bold py-2">
+                    <i class="fa-solid fa-right-to-bracket me-2"></i>Ingresar al Sistema
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function verContraseña() {
+    var input = document.getElementById("passwordField");
+    var icon = document.getElementById("eyeIcon");
+    if (input.type === "password") {
+        input.type = "text";
+        icon.classList.remove("fa-eye");
+        icon.classList.add("fa-eye-slash");
+    } else {
+        input.type = "password";
+        icon.classList.remove("fa-eye-slash");
+        icon.classList.add("fa-eye");
+    }
+}
+</script>
+{% endblock %}
