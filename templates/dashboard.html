@@ -6,6 +6,7 @@
     <title>Dashboard - Sistema Integral de Transporte</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
         .card-custom { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
@@ -13,6 +14,7 @@
         .form-control:focus, .form-select:focus { background-color: #0f172a; color: #ffffff; border-color: #3b82f6; }
         .nav-pills .nav-link.active { background-color: #2563eb; }
         .nav-pills .nav-link { color: #94a3b8; }
+        #mapaFlota { height: 420px; border-radius: 12px; }
     </style>
 </head>
 <body>
@@ -30,7 +32,7 @@
 </nav>
 
 <div class="container-fluid p-4">
-    
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -70,20 +72,32 @@
     </div>
 
     <div class="card-custom p-4">
-        <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
+        <ul class="nav nav-pills mb-4 flex-wrap" id="pills-tab" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" id="pills-vehiculos-tab" data-bs-toggle="pill" data-bs-target="#pills-vehiculos" type="button"><i class="fa-solid fa-truck me-2"></i>Vehículos</button>
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-vehiculos" type="button"><i class="fa-solid fa-truck me-2"></i>Vehículos</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="pills-choferes-tab" data-bs-toggle="pill" data-bs-target="#pills-choferes" type="button"><i class="fa-solid fa-id-card me-2"></i>Choferes</button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-choferes" type="button"><i class="fa-solid fa-id-card me-2"></i>Choferes</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="pills-viajes-tab" data-bs-toggle="pill" data-bs-target="#pills-viajes" type="button"><i class="fa-solid fa-route me-2"></i>Asignar Viaje</button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-viajes" type="button"><i class="fa-solid fa-route me-2"></i>Asignar Viaje</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#pills-mantenimiento" type="button">
+                    <i class="fa-solid fa-screwdriver-wrench me-2"></i>Mantenimiento
+                    {% if eventos_pendientes %}<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ eventos_pendientes|length }}</span>{% endif %}
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-gps" type="button"><i class="fa-solid fa-location-dot me-2"></i>Monitoreo GPS</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-reportes" type="button"><i class="fa-solid fa-file-lines me-2"></i>Reportes</button>
             </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
-            
+
             <!-- TAB VEHÍCULOS -->
             <div class="tab-pane fade show active" id="pills-vehiculos">
                 <div class="row g-4">
@@ -110,28 +124,19 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Placa</th>
-                                        <th>Modelo</th>
-                                        <th>KM Actual</th>
-                                        <th>Estatus</th>
-                                    </tr>
+                                    <tr><th>Placa</th><th>Modelo</th><th>KM Actual</th><th>Estatus</th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <tr>
-                                            <td class="fw-bold text-primary">{{ veh.placa }}</td>
-                                            <td>{{ veh.modelo }}</td>
-                                            <td>{{ veh.kilometraje_actual if veh.kilometraje_actual else 0 }} km</td>
-                                            <td><span class="badge bg-success">{{ veh.estado if veh.estado else 'Activo' }}</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for veh in vehiculos %}
+                                    <tr>
+                                        <td class="fw-bold text-primary">{{ veh.placa }}</td>
+                                        <td>{{ veh.modelo }}</td>
+                                        <td>{{ veh.kilometraje_actual if veh.kilometraje_actual else 0 }} km</td>
+                                        <td><span class="badge bg-success">{{ veh.estado if veh.estado else 'Activo' }}</span></td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="4" class="text-center text-secondary">No hay vehículos registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="4" class="text-center text-secondary">No hay vehículos registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
@@ -150,6 +155,14 @@
                                 <input type="text" name="nombre" class="form-control" required>
                             </div>
                             <div class="mb-3">
+                                <label class="form-label small">Cédula</label>
+                                <input type="text" name="cedula" class="form-control" placeholder="Ej: V-12345678">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small">Teléfono (para GPS)</label>
+                                <input type="text" name="telefono" class="form-control" placeholder="Ej: 04128807641">
+                            </div>
+                            <div class="mb-3">
                                 <label class="form-label small">Usuario (Login)</label>
                                 <input type="text" name="username" class="form-control" required>
                             </div>
@@ -161,11 +174,9 @@
                                 <label class="form-label small">Asignar Vehículo</label>
                                 <select name="vehiculo_id" class="form-select">
                                     <option value="none">Sin asignar</option>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-info text-white w-100"><i class="fa-solid fa-save me-2"></i>Guardar Chofer</button>
@@ -176,26 +187,31 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Usuario</th>
-                                        <th>Estado</th>
-                                    </tr>
+                                    <tr><th>Nombre</th><th>Usuario</th><th>Teléfono</th><th>Vehículo</th><th>Reasignar</th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if choferes %}
-                                        {% for chf in choferes %}
-                                        <tr>
-                                            <td>{{ chf.nombre if chf.nombre else chf.username }}</td>
-                                            <td>{{ chf.username }}</td>
-                                            <td><span class="badge bg-info text-dark">Activo</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for chf in choferes %}
+                                    <tr>
+                                        <td>{{ chf.nombre if chf.nombre else chf.username }}</td>
+                                        <td>{{ chf.username }}</td>
+                                        <td>{{ chf.telefono or '—' }}</td>
+                                        <td>{% if chf.vehiculo %}<span class="badge bg-primary">{{ chf.vehiculo.placa }}</span>{% else %}<span class="text-secondary">Sin asignar</span>{% endif %}</td>
+                                        <td>
+                                            <form action="/admin/asignar-vehiculo" method="POST" class="d-flex gap-1">
+                                                <input type="hidden" name="chofer_id" value="{{ chf.id }}">
+                                                <select name="vehiculo_id" class="form-select form-select-sm">
+                                                    <option value="none">Sin asignar</option>
+                                                    {% for veh in vehiculos %}
+                                                    <option value="{{ veh.id }}" {% if chf.vehiculo_id == veh.id %}selected{% endif %}>{{ veh.placa }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <button class="btn btn-sm btn-outline-info" type="submit"><i class="fa-solid fa-check"></i></button>
+                                            </form>
+                                        </td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="3" class="text-center text-secondary">No hay choferes registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="5" class="text-center text-secondary">No hay choferes registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
@@ -212,21 +228,17 @@
                             <div class="mb-3">
                                 <label class="form-label small">Vehículo</label>
                                 <select name="vehiculo_id" class="form-select" required>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">Chofer</label>
                                 <select name="chofer_id" class="form-select" required>
-                                    {% if choferes %}
-                                        {% for chf in choferes %}
-                                        <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for chf in choferes %}
+                                    <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="row g-2 mb-3">
@@ -257,30 +269,141 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Ruta</th>
-                                        <th>Flete</th>
-                                        <th>Comisión</th>
-                                        <th>Estatus</th>
-                                    </tr>
+                                    <tr><th>Fecha</th><th>Ruta</th><th>Chofer</th><th>Flete</th><th>Comisión</th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if viajes %}
-                                        {% for vj in viajes %}
-                                        <tr>
-                                            <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
-                                            <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
-                                            <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ vj.porcentaje_comision if vj.porcentaje_comision else 0 }}%)</td>
-                                            <td><span class="badge bg-warning text-dark">{{ vj.estado if vj.estado else 'Asignado' }}</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for vj in viajes %}
+                                    <tr>
+                                        <td>{{ vj.fecha.strftime('%Y-%m-%d') }}</td>
+                                        <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
+                                        <td>{{ vj.chofer.nombre if vj.chofer else 'N/A' }}</td>
+                                        <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
+                                        <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ vj.porcentaje_comision if vj.porcentaje_comision else 0 }}%)</td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="4" class="text-center text-secondary">No hay viajes registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="5" class="text-center text-secondary">No hay viajes registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB MANTENIMIENTO -->
+            <div class="tab-pane fade" id="pills-mantenimiento">
+                <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Registros de Combustible y Mantenimiento</h5>
+                <p class="text-secondary small">Los choferes envían combustible, aceite/filtros, cauchos, reparaciones y mejoras. Confirma o rechaza cada registro.</p>
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Vehículo</th><th>Chofer</th><th>KM</th><th>Costo</th><th>Fotos</th><th>Estado</th><th>Acción</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in eventos %}
+                            <tr>
+                                <td>{{ ev.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ ev.tipo }}</td>
+                                <td>{{ ev.vehiculo.placa if ev.vehiculo else 'N/A' }}</td>
+                                <td>{{ ev.chofer.nombre if ev.chofer else 'N/A' }}</td>
+                                <td>{{ ev.kilometraje|int }}</td>
+                                <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
+                                <td>
+                                    {% if ev.foto_ticket %}<a href="/uploads/{{ ev.foto_ticket }}" target="_blank" class="badge bg-secondary text-decoration-none">Ticket</a>{% endif %}
+                                    {% if ev.foto_odometro %}<a href="/uploads/{{ ev.foto_odometro }}" target="_blank" class="badge bg-secondary text-decoration-none">Odómetro</a>{% endif %}
+                                    {% if not ev.foto_ticket and not ev.foto_odometro %}<span class="text-secondary">—</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
+                                    {% elif ev.estado == 'Rechazado' %}<span class="badge bg-danger">Rechazado</span>
+                                    {% else %}<span class="badge bg-warning text-dark">Pendiente</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if ev.estado == 'Pendiente' %}
+                                    <form action="/admin/confirmar-evento/{{ ev.id }}" method="POST" class="d-flex gap-1">
+                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success"><i class="fa-solid fa-check"></i></button>
+                                        <button name="accion" value="rechazar" class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-xmark"></i></button>
+                                    </form>
+                                    {% else %}<span class="text-secondary small">{{ ev.confirmado_por.nombre if ev.confirmado_por else '' }}</span>{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="text-center text-secondary">No hay registros de mantenimiento.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB GPS -->
+            <div class="tab-pane fade" id="pills-gps">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-location-dot me-2 text-danger"></i>Monitoreo de Flota en Tiempo Real</h5>
+                    <button class="btn btn-sm btn-outline-light" onclick="cargarFlota()"><i class="fa-solid fa-rotate me-1"></i>Actualizar</button>
+                </div>
+                <div id="mapaFlota" class="mb-3"></div>
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead><tr><th>Chofer</th><th>Vehículo</th><th>Teléfono</th><th>Última posición</th><th>Fecha</th></tr></thead>
+                        <tbody id="tablaFlota">
+                            <tr><td colspan="5" class="text-center text-secondary">Pulsa "Actualizar" para cargar las ubicaciones.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB REPORTES -->
+            <div class="tab-pane fade" id="pills-reportes">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card-custom p-3 h-100">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-route me-2 text-info"></i>Reporte de Viajes y Comisiones</h5>
+                            <form action="/admin/reporte/pdf" method="GET" id="formViajes">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label small">Desde</label>
+                                        <input type="date" name="fecha_desde" id="v_desde" class="form-control">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Hasta</label>
+                                        <input type="date" name="fecha_hasta" id="v_hasta" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" formaction="/admin/reporte/pdf" class="btn btn-danger w-100"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button>
+                                    <button type="submit" formaction="/admin/reporte/excel" class="btn btn-success w-100"><i class="fa-solid fa-file-excel me-1"></i>Excel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card-custom p-3 h-100">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Reporte de Mantenimiento y Combustible</h5>
+                            <form method="GET">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-4">
+                                        <label class="form-label small">Desde</label>
+                                        <input type="date" name="fecha_desde" class="form-control">
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Hasta</label>
+                                        <input type="date" name="fecha_hasta" class="form-control">
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Estado</label>
+                                        <select name="estado" class="form-select">
+                                            <option value="">Todos</option>
+                                            <option value="Pendiente">Pendiente</option>
+                                            <option value="Confirmado">Confirmado</option>
+                                            <option value="Rechazado">Rechazado</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" formaction="/admin/reporte/mantenimiento/pdf" class="btn btn-danger w-100"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button>
+                                    <button type="submit" formaction="/admin/reporte/mantenimiento/excel" class="btn btn-success w-100"><i class="fa-solid fa-file-excel me-1"></i>Excel</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -295,5 +418,47 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let mapaFlota = null;
+    let capaMarcadores = null;
+
+    function initMapa() {
+        if (mapaFlota) return;
+        mapaFlota = L.map('mapaFlota').setView([10.2469, -67.5958], 7); // Maracay por defecto
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(mapaFlota);
+        capaMarcadores = L.layerGroup().addTo(mapaFlota);
+    }
+
+    function cargarFlota() {
+        initMapa();
+        fetch('/api/gps/flota')
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.getElementById('tablaFlota');
+                capaMarcadores.clearLayers();
+                if (!data.puntos || data.puntos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">No hay ubicaciones registradas todavía.</td></tr>';
+                    return;
+                }
+                let rows = '';
+                const bounds = [];
+                data.puntos.forEach(p => {
+                    rows += `<tr><td>${p.chofer}</td><td>${p.vehiculo}</td><td>${p.telefono}</td><td>${p.latitud.toFixed(5)}, ${p.longitud.toFixed(5)}</td><td>${p.fecha}</td></tr>`;
+                    L.marker([p.latitud, p.longitud]).addTo(capaMarcadores)
+                        .bindPopup(`<b>${p.chofer}</b><br>${p.vehiculo}<br>${p.fecha}`);
+                    bounds.push([p.latitud, p.longitud]);
+                });
+                tbody.innerHTML = rows;
+                if (bounds.length) mapaFlota.fitBounds(bounds, { maxZoom: 14, padding: [30, 30] });
+            });
+    }
+
+    document.querySelector('[data-bs-target="#pills-gps"]').addEventListener('shown.bs.tab', function () {
+        setTimeout(() => { initMapa(); mapaFlota.invalidateSize(); cargarFlota(); }, 200);
+    });
+</script>
 </body>
 </html>

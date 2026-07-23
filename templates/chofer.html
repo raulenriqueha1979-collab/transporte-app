@@ -74,6 +74,43 @@
                 </form>
             </div>
         </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold">Mis Últimos Registros</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th>KM</th><th>Costo</th><th>Estado</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in eventos %}
+                            <tr>
+                                <td>{{ ev.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ ev.tipo }}</td>
+                                <td>{{ ev.kilometraje|int }}</td>
+                                <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
+                                <td>
+                                    {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
+                                    {% elif ev.estado == 'Rechazado' %}<span class="badge bg-danger">Rechazado</span>
+                                    {% else %}<span class="badge bg-warning text-dark">Pendiente</span>{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center text-muted">Aún no has enviado registros.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info small d-flex align-items-center gap-2" id="gpsStatus">
+            <span class="spinner-border spinner-border-sm"></span>
+            Activando envío de ubicación GPS...
+        </div>
+        {% else %}
+        <div class="alert alert-warning">Cuando el administrador te asigne un vehículo podrás registrar combustible y mantenimiento.</div>
         {% endif %}
     </div>
 
@@ -84,21 +121,34 @@
     </footer>
 
     <script>
+        function setEstado(clase, texto) {
+            var el = document.getElementById('gpsStatus');
+            if (!el) return;
+            el.className = 'alert small d-flex align-items-center gap-2 alert-' + clase;
+            el.textContent = texto;
+        }
         function transmitirUbicacion() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    fetch('/api/actualizar-gps', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            latitud: position.coords.latitude,
-                            longitud: position.coords.longitude
-                        })
-                    });
-                }, function(err) {
-                    console.log("GPS no activado.");
-                }, { enableHighAccuracy: true });
+            if (!("geolocation" in navigator)) {
+                setEstado('secondary', 'Este dispositivo no soporta GPS.');
+                return;
             }
+            navigator.geolocation.getCurrentPosition(function(position) {
+                fetch('/api/actualizar-gps', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        latitud: position.coords.latitude,
+                        longitud: position.coords.longitude
+                    })
+                }).then(function(){
+                    var hora = new Date().toLocaleTimeString();
+                    setEstado('success', 'Ubicación enviada al centro de control (' + hora + ').');
+                }).catch(function(){
+                    setEstado('warning', 'No se pudo enviar la ubicación. Reintentando...');
+                });
+            }, function(err) {
+                setEstado('warning', 'Activa el GPS y concede permiso de ubicación para el rastreo.');
+            }, { enableHighAccuracy: true });
         }
         setInterval(transmitirUbicacion, 30000);
         transmitirUbicacion();
