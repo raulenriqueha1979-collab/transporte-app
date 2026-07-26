@@ -126,7 +126,7 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr><th>Placa</th><th>Modelo</th><th>KM Actual</th><th>Estatus</th></tr>
+                                    <tr><th>Placa</th><th>Modelo</th><th>KM Actual</th><th>Estatus</th><th></th></tr>
                                 </thead>
                                 <tbody>
                                     {% for veh in vehiculos %}
@@ -135,9 +135,15 @@
                                         <td>{{ veh.modelo }}</td>
                                         <td>{{ veh.kilometraje_actual if veh.kilometraje_actual else 0 }} km</td>
                                         <td><span class="badge bg-success">{{ veh.estado if veh.estado else 'Activo' }}</span></td>
+                                        <td>
+                                            <form action="{{ request.script_root }}/admin/eliminar-vehiculo/{{ veh.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar el vehículo {{ veh.placa }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar vehículo"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                        </td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="4" class="text-center text-secondary">No hay vehículos registrados.</td></tr>
+                                    <tr><td colspan="5" class="text-center text-secondary">No hay vehículos registrados.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -189,7 +195,7 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr><th>Nombre</th><th>Usuario</th><th>Teléfono</th><th>Vehículo</th><th>Reasignar</th></tr>
+                                    <tr><th>Nombre</th><th>Usuario</th><th>Teléfono</th><th>Vehículo</th><th>Reasignar</th><th></th></tr>
                                 </thead>
                                 <tbody>
                                     {% for chf in choferes %}
@@ -210,9 +216,15 @@
                                                 <button class="btn btn-sm btn-outline-info" type="submit"><i class="fa-solid fa-check"></i></button>
                                             </form>
                                         </td>
+                                        <td>
+                                            <form action="{{ request.script_root }}/admin/eliminar-chofer/{{ chf.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar al chofer {{ chf.nombre or chf.username }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar chofer"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                        </td>
                                     </tr>
                                     {% else %}
-                                    <tr><td colspan="5" class="text-center text-secondary">No hay choferes registrados.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-secondary">No hay choferes registrados.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -284,10 +296,16 @@
                                         <td><span class="badge bg-info text-dark">{{ vj.estado }}</span></td>
                                         <td>{% if vj.guia %}<a href="{{ request.script_root }}/uploads/{{ vj.guia }}" target="_blank" class="badge bg-secondary text-decoration-none">Ver Guía</a>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                                         <td>
+                                            <div class="d-flex gap-1">
                                             <button type="button" class="btn btn-sm btn-outline-warning btn-editar-viaje"
                                                 data-id="{{ vj.id }}" data-origen="{{ vj.origen }}" data-destino="{{ vj.destino }}"
                                                 data-flete="{{ vj.monto_flete or 0 }}" data-pct="{{ vj.porcentaje_comision or 0 }}"
                                                 title="Corregir con clave"><i class="fa-solid fa-pen"></i></button>
+                                            <form action="{{ request.script_root }}/admin/eliminar-viaje/{{ vj.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar el viaje #{{ vj.id }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar viaje"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% else %}
@@ -343,6 +361,10 @@
                                         data-kilometraje="{{ ev.kilometraje or 0 }}" data-litros="{{ ev.litros or 0 }}"
                                         data-monto="{{ ev.monto_costo or 0 }}" data-detalles="{{ ev.detalles or '' }}"
                                         title="Corregir con clave"><i class="fa-solid fa-pen"></i></button>
+                                    <form action="{{ request.script_root }}/admin/eliminar-evento/{{ ev.id }}" method="POST"
+                                          onsubmit="return confirm('¿Eliminar el registro #{{ ev.id }}? Esta acción no se puede deshacer.');">
+                                        <button class="btn btn-sm btn-outline-danger" title="Eliminar registro"><i class="fa-solid fa-trash"></i></button>
+                                    </form>
                                     </div>
                                 </td>
                             </tr>

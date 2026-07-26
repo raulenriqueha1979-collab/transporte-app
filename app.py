@@ -471,6 +471,75 @@ def editar_viaje(viaje_id):
     return redirect(url_for('dashboard'))
 
 
+# --- Eliminación de registros (master / admin) ------------------------------
+@app.route('/admin/eliminar-evento/<int:evento_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def eliminar_evento(evento_id):
+    evento = EventoVehiculo.query.get_or_404(evento_id)
+    _registrar_auditoria('EventoVehiculo', evento.id,
+                         [f"eliminado (tipo '{evento.tipo}', costo {evento.monto_costo})"],
+                         request.form.get('motivo') or 'Eliminación')
+    db.session.delete(evento)
+    db.session.commit()
+    flash(f'Registro de mantenimiento #{evento_id} eliminado.', 'success')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/eliminar-viaje/<int:viaje_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def eliminar_viaje(viaje_id):
+    viaje = Viaje.query.get_or_404(viaje_id)
+    # Desvincular eventos que referencian este viaje para no dejar huérfanos
+    EventoVehiculo.query.filter_by(viaje_id=viaje.id).update({'viaje_id': None})
+    _registrar_auditoria('Viaje', viaje.id,
+                         [f"eliminado ({viaje.origen} -> {viaje.destino}, flete {viaje.monto_flete})"],
+                         request.form.get('motivo') or 'Eliminación')
+    db.session.delete(viaje)
+    db.session.commit()
+    flash(f'Despacho #{viaje_id} eliminado.', 'success')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/eliminar-vehiculo/<int:vehiculo_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def eliminar_vehiculo(vehiculo_id):
+    veh = Vehiculo.query.get_or_404(vehiculo_id)
+    n_viajes = Viaje.query.filter_by(vehiculo_id=veh.id).count()
+    n_eventos = EventoVehiculo.query.filter_by(vehiculo_id=veh.id).count()
+    if n_viajes or n_eventos:
+        flash(f'No se puede eliminar {veh.placa}: tiene {n_viajes} viaje(s) y '
+              f'{n_eventos} registro(s) asociados. Elimínalos primero.', 'danger')
+        return redirect(url_for('dashboard'))
+    # Desasignar choferes que tuvieran este vehículo
+    Usuario.query.filter_by(vehiculo_id=veh.id).update({'vehiculo_id': None})
+    _registrar_auditoria('Vehiculo', veh.id,
+                         [f"eliminado (placa '{veh.placa}', modelo '{veh.modelo}')"],
+                         request.form.get('motivo') or 'Eliminación')
+    db.session.delete(veh)
+    db.session.commit()
+    flash(f'Vehículo {veh.placa} eliminado.', 'success')
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/eliminar-chofer/<int:chofer_id>', methods=['POST'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def eliminar_chofer(chofer_id):
+    chofer = Usuario.query.filter_by(id=chofer_id, rol=ROL_CHOFER).first_or_404()
+    n_viajes = Viaje.query.filter_by(chofer_id=chofer.id).count()
+    n_eventos = EventoVehiculo.query.filter_by(chofer_id=chofer.id).count()
+    if n_viajes or n_eventos:
+        flash(f'No se puede eliminar a {chofer.nombre}: tiene {n_viajes} viaje(s) y '
+              f'{n_eventos} registro(s) asociados. Elimínalos primero.', 'danger')
+        return redirect(url_for('dashboard'))
+    _registrar_auditoria('Usuario', chofer.id,
+                         [f"chofer eliminado ('{chofer.nombre}', usuario '{chofer.username}')"],
+                         request.form.get('motivo') or 'Eliminación')
+    db.session.delete(chofer)
+    db.session.commit()
+    flash(f'Chofer {chofer.nombre} eliminado.', 'success')
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/admin/auditoria')
 @roles_required(ROL_MASTER, ROL_ADMIN)
 def ver_auditoria():
