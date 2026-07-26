@@ -588,9 +588,10 @@ def registrar_evento():
         flash('No tienes un vehículo asignado.', 'danger')
         return redirect(url_for('panel_chofer'))
 
-    # El chofer solo puede registrar Combustible (en $) o Peaje (en Bs).
+    # El chofer registra en $ (Combustible, Cauchos, Repuestos, Otros) o Peaje en Bs.
+    # El cambio de aceite y filtro queda excluido: solo lo hace Luis.
     tipo = request.form.get('tipo') or 'Combustible'
-    if tipo not in ('Combustible', 'Peaje'):
+    if tipo not in ('Combustible', 'Cauchos', 'Repuestos', 'Otros', 'Peaje'):
         flash('Tipo de registro no permitido para el chofer.', 'danger')
         return redirect(url_for('panel_chofer'))
 

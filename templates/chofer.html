@@ -50,6 +50,9 @@
                             <label class="form-label fw-semibold">Tipo de Registro</label>
                             <select name="tipo" id="tipoGasto" class="form-select" required>
                                 <option value="Combustible">COMBUSTIBLE (en $)</option>
+                                <option value="Cauchos">CAMBIO DE CAUCHOS (en $)</option>
+                                <option value="Repuestos">REPUESTOS (en $)</option>
+                                <option value="Otros">OTROS (en $)</option>
                                 <option value="Peaje">PEAJE (en Bs)</option>
                             </select>
                         </div>
@@ -243,10 +246,11 @@
             var foto = document.getElementById('fotoTicket');
             function toggle() {
                 var esPeaje = sel.value === 'Peaje';
+                var esCombustible = sel.value === 'Combustible';
                 lblMonto.textContent = esPeaje ? 'Monto del Peaje (Bs)' : 'Monto / Costo ($)';
                 lblFoto.textContent = esPeaje ? 'Foto del Recibo de Peaje (obligatoria)' : 'Foto del Recibo / Factura';
                 hintPeaje.classList.toggle('d-none', !esPeaje);
-                grpLitros.classList.toggle('d-none', esPeaje);
+                grpLitros.classList.toggle('d-none', !esCombustible);
                 grpKm.classList.toggle('d-none', esPeaje);
                 grpOdo.classList.toggle('d-none', esPeaje);
             }
