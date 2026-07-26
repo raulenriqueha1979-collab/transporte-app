@@ -6,6 +6,7 @@ from functools import wraps
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, send_file, send_from_directory, abort)
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from flask_login import (LoginManager, UserMixin, login_user, logout_user,
                          login_required, current_user)
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -57,6 +58,9 @@ class Usuario(UserMixin, db.Model):
     telefono = db.Column(db.String(20))
     vehiculo_id = db.Column(db.Integer, db.ForeignKey('vehiculo.id'))
     activo = db.Column(db.Boolean, default=True, nullable=False)
+    # Estado del rastreo GPS del chofer (por teléfono): encendido/apagado
+    gps_activo = db.Column(db.Boolean)
+    gps_actualizado = db.Column(db.DateTime)
 
     vehiculo = db.relationship('Vehiculo', backref='choferes')
 
@@ -121,6 +125,7 @@ class EventoVehiculo(db.Model):
     kilometraje = db.Column(db.Float, default=0.0)
     litros = db.Column(db.Float, default=0.0)  # Cantidad de combustible cargado
     monto_costo = db.Column(db.Float, default=0.0)
+    moneda = db.Column(db.String(3), default='USD')  # USD (combustible/aceite) o BS (peaje)
     detalles = db.Column(db.Text)
     foto_ticket = db.Column(db.String(255))
     foto_odometro = db.Column(db.String(255))
@@ -249,7 +254,10 @@ def dashboard():
     eventos_pendientes = [e for e in eventos if e.estado == 'Pendiente']
 
     total_comisiones = sum(v.monto_comision for v in viajes)
-    total_gastos = sum(e.monto_costo for e in eventos if e.estado == 'Confirmado')
+    total_gastos = sum(e.monto_costo for e in eventos
+                       if e.estado == 'Confirmado' and (e.moneda or 'USD') != 'BS')
+    total_peaje_bs = sum(e.monto_costo for e in eventos
+                         if e.estado == 'Confirmado' and (e.moneda or 'USD') == 'BS')
 
     return render_template(
         'dashboard.html',
@@ -260,6 +268,8 @@ def dashboard():
         eventos_pendientes=eventos_pendientes,
         total_comisiones=total_comisiones,
         total_gastos=total_gastos,
+        total_peaje_bs=total_peaje_bs,
+        hoy=date.today().isoformat(),
     )
 
 
@@ -578,11 +588,17 @@ def registrar_evento():
         flash('No tienes un vehículo asignado.', 'danger')
         return redirect(url_for('panel_chofer'))
 
+    # El chofer solo puede registrar Combustible (en $) o Peaje (en Bs).
     tipo = request.form.get('tipo') or 'Combustible'
+    if tipo not in ('Combustible', 'Peaje'):
+        flash('Tipo de registro no permitido para el chofer.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
     kilometraje = round(float(request.form.get('kilometraje') or 0.0), 2)
     litros = round(float(request.form.get('litros') or 0.0), 2)
     monto_costo = round(float(request.form.get('monto_costo') or 0.0), 2)
     detalles = request.form.get('detalles')
+    moneda = 'BS' if tipo == 'Peaje' else 'USD'
 
     fecha_op = parse_fecha(request.form.get('fecha')) or datetime.now()
 
@@ -596,6 +612,11 @@ def registrar_evento():
     foto_ticket = guardar_foto(request.files.get('foto_ticket'))
     foto_odometro = guardar_foto(request.files.get('foto_odometro'))
 
+    # El peaje exige foto del recibo
+    if tipo == 'Peaje' and not foto_ticket:
+        flash('Para registrar un peaje debes anexar la foto del recibo de peaje.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
     evento = EventoVehiculo(
         vehiculo_id=current_user.vehiculo_id,
         chofer_id=current_user.id,
@@ -604,6 +625,7 @@ def registrar_evento():
         kilometraje=kilometraje,
         litros=litros,
         monto_costo=monto_costo,
+        moneda=moneda,
         detalles=detalles,
         foto_ticket=foto_ticket,
         foto_odometro=foto_odometro,
@@ -614,6 +636,50 @@ def registrar_evento():
     db.session.commit()
     flash('Registro enviado. Queda pendiente de confirmación por el administrador.', 'success')
     return redirect(url_for('panel_chofer'))
+
+
+@app.route('/admin/registrar-aceite-filtro', methods=['POST'])
+@roles_required(ROL_ADMIN)
+def registrar_aceite_filtro():
+    """Cambio de aceite y filtro: lo registra únicamente Luis (rol admin), en $."""
+    vehiculo_id = request.form.get('vehiculo_id')
+    if not vehiculo_id or vehiculo_id in ('none', '', '0'):
+        flash('Selecciona el vehículo del cambio de aceite/filtro.', 'danger')
+        return redirect(url_for('dashboard'))
+    veh = Vehiculo.query.get(int(vehiculo_id))
+    if not veh:
+        flash('Vehículo no encontrado.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    kilometraje = round(float(request.form.get('kilometraje') or 0.0), 2)
+    monto_costo = round(float(request.form.get('monto_costo') or 0.0), 2)
+    detalles = request.form.get('detalles')
+    fecha_op = parse_fecha(request.form.get('fecha')) or datetime.now()
+    foto_ticket = guardar_foto(request.files.get('foto_ticket'))
+
+    # chofer asignado al vehículo (si lo hay); si no, se atribuye a quien lo registra
+    chofer = veh.choferes[0] if veh.choferes else current_user
+    if kilometraje and kilometraje > (veh.kilometraje_actual or 0):
+        veh.kilometraje_actual = kilometraje
+
+    evento = EventoVehiculo(
+        vehiculo_id=veh.id,
+        chofer_id=chofer.id,
+        tipo='Aceite/Filtro',
+        kilometraje=kilometraje,
+        monto_costo=monto_costo,
+        moneda='USD',
+        detalles=detalles,
+        foto_ticket=foto_ticket,
+        estado='Confirmado',
+        fecha=fecha_op,
+        confirmado_por_id=current_user.id,
+        fecha_confirmacion=datetime.now(),
+    )
+    db.session.add(evento)
+    db.session.commit()
+    flash(f'Cambio de aceite/filtro registrado para {veh.placa}.', 'success')
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/chofer/crear-viaje', methods=['POST'])
@@ -673,6 +739,20 @@ def actualizar_gps():
         return jsonify({'success': False, 'message': 'Coordenadas incompletas.'}), 400
     punto = RegistroGPS(telefono=str(telefono), latitud=float(lat), longitud=float(lon))
     db.session.add(punto)
+    # El GPS está encendido: la ubicación llegó correctamente
+    current_user.gps_activo = True
+    current_user.gps_actualizado = datetime.now()
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/gps/estado', methods=['POST'])
+@login_required
+def gps_estado():
+    """El teléfono del chofer reporta si el rastreo GPS está encendido o apagado."""
+    data = request.get_json(silent=True) or {}
+    current_user.gps_activo = bool(data.get('activo'))
+    current_user.gps_actualizado = datetime.now()
     db.session.commit()
     return jsonify({'success': True})
 
@@ -729,6 +809,30 @@ def gps_flota():
                 'fecha': punto.fecha.strftime('%Y-%m-%d %H:%M:%S'),
             })
     return jsonify({'success': True, 'puntos': resultado})
+
+
+@app.route('/api/gps/estados', methods=['GET'])
+@roles_required(ROL_MASTER, ROL_ADMIN)
+def gps_estados():
+    """Estado de rastreo (encendido/apagado) de cada chofer, para alertar a master/admin."""
+    choferes = Usuario.query.filter_by(rol=ROL_CHOFER).order_by(Usuario.nombre).all()
+    data = []
+    for c in choferes:
+        if c.gps_activo is None:
+            estado = 'sin_datos'
+        elif c.gps_activo:
+            estado = 'encendido'
+        else:
+            estado = 'apagado'
+        data.append({
+            'chofer': c.nombre,
+            'telefono': c.telefono or '—',
+            'vehiculo': c.vehiculo.placa if c.vehiculo else 'Sin asignar',
+            'estado': estado,
+            'actualizado': c.gps_actualizado.strftime('%Y-%m-%d %H:%M:%S') if c.gps_actualizado else None,
+        })
+    apagados = [d for d in data if d['estado'] != 'encendido']
+    return jsonify({'success': True, 'choferes': data, 'apagados': apagados})
 
 
 # --- Reportes: Viajes -------------------------------------------------------
@@ -921,7 +1025,7 @@ def reporte_mantenimiento_excel():
                          bottom=Side(style='thin', color='CCCCCC'))
 
     headers = ["ID", "Fecha", "Tipo", "Vehículo", "Chofer", "Kilometraje",
-               "Litros", "Costo ($)", "Estado", "Detalles"]
+               "Litros", "Costo", "Moneda", "Estado", "Detalles"]
     ws.append(headers)
     ws.row_dimensions[1].height = 25
     for col_num in range(1, len(headers) + 1):
@@ -940,6 +1044,7 @@ def reporte_mantenimiento_excel():
             round(e.kilometraje or 0, 2),
             round(e.litros or 0, 2),
             round(e.monto_costo or 0, 2),
+            'Bs' if (e.moneda or 'USD') == 'BS' else '$',
             e.estado,
             e.detalles or "",
         ])
@@ -949,17 +1054,22 @@ def reporte_mantenimiento_excel():
         for cell in row:
             cell.border = border_thin
             cell.alignment = Alignment(vertical="center")
-            if cell.column == 7:
+            if cell.column in (7, 8):
                 cell.number_format = '#,##0.00'
-            if cell.column == 8:
-                cell.number_format = '$#,##0.00'
 
+    total_usd = sum((e.monto_costo or 0) for e in eventos if (e.moneda or 'USD') != 'BS')
+    total_bs = sum((e.monto_costo or 0) for e in eventos if (e.moneda or 'USD') == 'BS')
     total_row = ws.max_row + 1
-    ws.cell(row=total_row, column=7, value="TOTAL COSTO:").font = Font(name="Arial", size=11, bold=True)
+    ws.cell(row=total_row, column=7, value="TOTAL $ (combustible/aceite):").font = Font(name="Arial", size=11, bold=True)
     ws.cell(row=total_row, column=7).alignment = Alignment(horizontal="right")
-    c = ws.cell(row=total_row, column=8, value=f"=SUM(H2:H{total_row-1})")
+    c = ws.cell(row=total_row, column=8, value=round(total_usd, 2))
     c.font = Font(name="Arial", size=11, bold=True)
     c.number_format = '$#,##0.00'
+    ws.cell(row=total_row + 1, column=7, value="TOTAL Bs (peaje):").font = Font(name="Arial", size=11, bold=True)
+    ws.cell(row=total_row + 1, column=7).alignment = Alignment(horizontal="right")
+    cb = ws.cell(row=total_row + 1, column=8, value=round(total_bs, 2))
+    cb.font = Font(name="Arial", size=11, bold=True)
+    cb.number_format = '"Bs" #,##0.00'
 
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
@@ -981,10 +1091,13 @@ def reporte_mantenimiento_pdf():
     fecha_hasta = request.args.get('fecha_hasta')
     estado = request.args.get('estado') or None
     eventos = _filtrar_eventos(fecha_desde, fecha_hasta, estado)
-    total_costo = sum(e.monto_costo for e in eventos)
+    total_usd = sum(e.monto_costo for e in eventos if (e.moneda or 'USD') != 'BS')
+    total_bs = sum(e.monto_costo for e in eventos if (e.moneda or 'USD') == 'BS')
 
     filas = ""
     for e in eventos:
+        es_bs = (e.moneda or 'USD') == 'BS'
+        costo_fmt = (f"Bs {e.monto_costo:,.2f}" if es_bs else f"${e.monto_costo:,.2f}")
         filas += f"""
             <tr>
                 <td>{e.fecha.strftime('%Y-%m-%d')}</td>
@@ -993,7 +1106,7 @@ def reporte_mantenimiento_pdf():
                 <td>{e.chofer.nombre if e.chofer else 'N/A'}</td>
                 <td style="text-align:right;">{e.kilometraje:,.0f}</td>
                 <td style="text-align:right;">{(e.litros or 0):,.2f}</td>
-                <td style="text-align:right;">${e.monto_costo:,.2f}</td>
+                <td style="text-align:right;">{costo_fmt}</td>
                 <td>{e.estado}</td>
             </tr>
         """
@@ -1029,7 +1142,7 @@ def reporte_mantenimiento_pdf():
             </tr></thead>
             <tbody>{filas}</tbody>
         </table>
-        <div class="total-box">Total Costo: ${total_costo:,.2f}</div>
+        <div class="total-box">Total $ (combustible/aceite): ${total_usd:,.2f} &nbsp;|&nbsp; Total Bs (peaje): Bs {total_bs:,.2f}</div>
     </body></html>
     """
 
@@ -1061,7 +1174,9 @@ def _finanzas_viajes(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None)
 
     filas = []
     for v in viajes:
-        gastos = sum((g.monto_costo or 0.0) for g in v.gastos if g.estado != 'Rechazado')
+        activos = [g for g in v.gastos if g.estado != 'Rechazado']
+        gastos = sum((g.monto_costo or 0.0) for g in activos if (g.moneda or 'USD') != 'BS')
+        peaje_bs = sum((g.monto_costo or 0.0) for g in activos if (g.moneda or 'USD') == 'BS')
         ingreso = v.monto_flete or 0.0
         comision = v.monto_comision or 0.0
         ganancia = round(ingreso - comision - gastos, 2)
@@ -1074,6 +1189,7 @@ def _finanzas_viajes(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None)
             'ingreso': round(ingreso, 2),
             'comision': round(comision, 2),
             'gastos': round(gastos, 2),
+            'peaje_bs': round(peaje_bs, 2),
             'ganancia': ganancia,
         })
     return filas
@@ -1237,9 +1353,28 @@ def seed_usuarios():
     db.session.commit()
 
 
+def migrar_esquema():
+    """Agrega columnas nuevas a tablas existentes (SQLite) si aún no existen.
+
+    Idempotente: se puede ejecutar en cada arranque sin perder datos.
+    """
+    columnas = {
+        'evento_vehiculo': [("moneda", "VARCHAR(3) DEFAULT 'USD'")],
+        'usuario': [("gps_activo", "BOOLEAN"), ("gps_actualizado", "DATETIME")],
+    }
+    with db.engine.connect() as conn:
+        for tabla, cols in columnas.items():
+            existentes = {row[1] for row in conn.execute(text(f"PRAGMA table_info({tabla})"))}
+            for nombre, definicion in cols:
+                if nombre not in existentes:
+                    conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}"))
+        conn.commit()
+
+
 def init_db():
     with app.app_context():
         db.create_all()
+        migrar_esquema()
         seed_usuarios()
 
 

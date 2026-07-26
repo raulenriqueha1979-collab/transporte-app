@@ -42,19 +42,15 @@
         </div>
 
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-white fw-bold">Registrar Gasto (Combustible / Mantenimiento / Peaje / Otros)</div>
+            <div class="card-header bg-white fw-bold">Registrar Gasto (Combustible en $ / Peaje en Bs)</div>
             <div class="card-body">
-                <form action="{{ request.script_root }}/chofer/registrar-evento" method="POST" enctype="multipart/form-data">
+                <form action="{{ request.script_root }}/chofer/registrar-evento" method="POST" enctype="multipart/form-data" id="formGasto">
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Tipo de Registro</label>
-                            <select name="tipo" class="form-select" required>
-                                <option value="Combustible">Echar Combustible</option>
-                                <option value="Aceite/Filtro">Cambio de Aceite / Filtro</option>
-                                <option value="Cauchos">Cambio de Cauchos</option>
-                                <option value="Reparacion">Reparación / Taller / Repuestos</option>
-                                <option value="Peaje">Peaje</option>
-                                <option value="Otros">Otros Gastos</option>
+                            <select name="tipo" id="tipoGasto" class="form-select" required>
+                                <option value="Combustible">COMBUSTIBLE (en $)</option>
+                                <option value="Peaje">PEAJE (en Bs)</option>
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -70,25 +66,26 @@
                             <option value="{{ vj.id }}">#{{ vj.id }} · {{ vj.fecha.strftime('%Y-%m-%d') }} · {{ vj.origen }} ➔ {{ vj.destino }}</option>
                             {% endfor %}
                         </select>
-                        <small class="text-muted">Asocia el gasto (peaje, combustible, etc.) al viaje realizado.</small>
+                        <small class="text-muted">Asocia el gasto (combustible o peaje) al viaje realizado.</small>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3" id="grpKm">
                         <label class="form-label fw-semibold">Kilometraje Actual (Odómetro, si aplica)</label>
                         <input type="number" step="0.1" name="kilometraje" class="form-control" value="0" placeholder="Ej: 125000">
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Litros de Combustible (si aplica)</label>
+                    <div class="mb-3" id="grpLitros">
+                        <label class="form-label fw-semibold">Litros de Combustible</label>
                         <input type="number" step="0.01" name="litros" class="form-control" value="0.00" placeholder="Ej: 120.00">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Monto / Costo ($)</label>
+                        <label class="form-label fw-semibold" id="lblMonto">Monto / Costo ($)</label>
                         <input type="number" step="0.01" name="monto_costo" class="form-control" value="0.00">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Foto del Recibo / Factura</label>
-                        <input type="file" name="foto_ticket" class="form-control" accept="image/*" capture="environment">
+                        <label class="form-label fw-semibold" id="lblFotoTicket">Foto del Recibo / Factura</label>
+                        <input type="file" name="foto_ticket" id="fotoTicket" class="form-control" accept="image/*" capture="environment">
+                        <small class="text-danger d-none" id="hintPeaje">El peaje exige la foto del recibo de peaje.</small>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-3" id="grpOdometro">
                         <label class="form-label fw-semibold">Foto del Tablero / Odómetro (si aplica)</label>
                         <input type="file" name="foto_odometro" class="form-control" accept="image/*" capture="environment">
                     </div>
@@ -117,7 +114,7 @@
                                 <td>{% if ev.viaje %}#{{ ev.viaje.id }} {{ ev.viaje.origen }}➔{{ ev.viaje.destino }}{% else %}—{% endif %}</td>
                                 <td>{{ ev.kilometraje|int }}</td>
                                 <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
-                                <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
+                                <td>{% if ev.moneda == 'BS' %}Bs {{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% else %}${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% endif %}</td>
                                 <td>
                                     {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
                                     {% elif ev.estado == 'Rechazado' %}<span class="badge bg-danger">Rechazado</span>
@@ -232,15 +229,56 @@
     </footer>
 
     <script>
+        // --- Formulario de gasto: alternar campos según tipo (Combustible $ / Peaje Bs) ---
+        (function () {
+            var sel = document.getElementById('tipoGasto');
+            if (!sel) return;
+            var lblMonto = document.getElementById('lblMonto');
+            var lblFoto = document.getElementById('lblFotoTicket');
+            var hintPeaje = document.getElementById('hintPeaje');
+            var grpLitros = document.getElementById('grpLitros');
+            var grpKm = document.getElementById('grpKm');
+            var grpOdo = document.getElementById('grpOdometro');
+            var form = document.getElementById('formGasto');
+            var foto = document.getElementById('fotoTicket');
+            function toggle() {
+                var esPeaje = sel.value === 'Peaje';
+                lblMonto.textContent = esPeaje ? 'Monto del Peaje (Bs)' : 'Monto / Costo ($)';
+                lblFoto.textContent = esPeaje ? 'Foto del Recibo de Peaje (obligatoria)' : 'Foto del Recibo / Factura';
+                hintPeaje.classList.toggle('d-none', !esPeaje);
+                grpLitros.classList.toggle('d-none', esPeaje);
+                grpKm.classList.toggle('d-none', esPeaje);
+                grpOdo.classList.toggle('d-none', esPeaje);
+            }
+            sel.addEventListener('change', toggle);
+            toggle();
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    if (sel.value === 'Peaje' && foto && foto.files.length === 0) {
+                        e.preventDefault();
+                        alert('Para registrar un peaje debes anexar la foto del recibo de peaje.');
+                    }
+                });
+            }
+        })();
+
         function setEstado(clase, texto) {
             var el = document.getElementById('gpsStatus');
             if (!el) return;
             el.className = 'alert small d-flex align-items-center gap-2 alert-' + clase;
             el.textContent = texto;
         }
+        function reportarEstado(activo) {
+            fetch('{{ request.script_root }}/api/gps/estado', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activo: activo })
+            }).catch(function(){});
+        }
         function transmitirUbicacion() {
             if (!("geolocation" in navigator)) {
-                setEstado('secondary', 'Este dispositivo no soporta GPS.');
+                setEstado('danger', 'Este dispositivo no soporta GPS. El rastreo está APAGADO.');
+                reportarEstado(false);
                 return;
             }
             navigator.geolocation.getCurrentPosition(function(position) {
@@ -253,12 +291,13 @@
                     })
                 }).then(function(){
                     var hora = new Date().toLocaleTimeString();
-                    setEstado('success', 'Ubicación enviada al centro de control (' + hora + ').');
+                    setEstado('success', 'GPS ENCENDIDO. Ubicación enviada al centro de control (' + hora + ').');
                 }).catch(function(){
                     setEstado('warning', 'No se pudo enviar la ubicación. Reintentando...');
                 });
             }, function(err) {
-                setEstado('warning', 'Activa el GPS y concede permiso de ubicación para el rastreo.');
+                setEstado('danger', 'GPS APAGADO. Activa la ubicación: se notificará al centro de control.');
+                reportarEstado(false);
             }, { enableHighAccuracy: true });
         }
         setInterval(transmitirUbicacion, 30000);

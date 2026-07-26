@@ -321,7 +321,49 @@
             <!-- TAB MANTENIMIENTO -->
             <div class="tab-pane fade" id="pills-mantenimiento">
                 <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Registros de Combustible y Mantenimiento</h5>
-                <p class="text-secondary small">Los choferes envían combustible, aceite/filtros, cauchos, reparaciones y mejoras. Confirma o rechaza cada registro.</p>
+                <p class="text-secondary small">Los choferes registran <b>COMBUSTIBLE</b> (en $) y <b>PEAJE</b> (en Bs, con foto del recibo). El <b>cambio de aceite y filtro</b> lo registra únicamente Luis. Confirma o rechaza cada registro.</p>
+
+                {% if current_user.rol == 'admin' %}
+                <div class="card bg-dark border-warning mb-4">
+                    <div class="card-header fw-bold text-warning"><i class="fa-solid fa-oil-can me-2"></i>Registrar Cambio de Aceite y Filtro (solo Luis · en $)</div>
+                    <div class="card-body">
+                        <form action="{{ request.script_root }}/admin/registrar-aceite-filtro" method="POST" enctype="multipart/form-data" class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small">Vehículo</label>
+                                <select name="vehiculo_id" class="form-select form-select-sm" required>
+                                    <option value="none">— Seleccionar —</option>
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} · {{ veh.modelo }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Fecha</label>
+                                <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Kilometraje</label>
+                                <input type="number" step="0.1" name="kilometraje" class="form-control form-control-sm" value="0">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Monto ($)</label>
+                                <input type="number" step="0.01" name="monto_costo" class="form-control form-control-sm" value="0.00">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Foto recibo</label>
+                                <input type="file" name="foto_ticket" class="form-control form-control-sm" accept="image/*">
+                            </div>
+                            <div class="col-md-1 d-grid">
+                                <button class="btn btn-warning btn-sm fw-bold" type="submit">Guardar</button>
+                            </div>
+                            <div class="col-12">
+                                <input type="text" name="detalles" class="form-control form-control-sm" placeholder="Detalles / observaciones (opcional)">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="table-responsive">
                     <table class="table table-dark table-striped align-middle">
                         <thead>
@@ -337,7 +379,7 @@
                                 <td>{% if ev.viaje %}<span class="badge bg-dark">#{{ ev.viaje.id }}</span>{% else %}—{% endif %}</td>
                                 <td>{{ ev.kilometraje|int }}</td>
                                 <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
-                                <td>${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}</td>
+                                <td>{% if ev.moneda == 'BS' %}Bs {{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% else %}${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% endif %}</td>
                                 <td>
                                     {% if ev.foto_ticket %}<a href="{{ request.script_root }}/uploads/{{ ev.foto_ticket }}" target="_blank" class="badge bg-secondary text-decoration-none">Recibo</a>{% endif %}
                                     {% if ev.foto_odometro %}<a href="{{ request.script_root }}/uploads/{{ ev.foto_odometro }}" target="_blank" class="badge bg-secondary text-decoration-none">Odómetro</a>{% endif %}
@@ -382,6 +424,18 @@
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-location-dot me-2 text-danger"></i>Monitoreo de Flota en Tiempo Real</h5>
                     <button class="btn btn-sm btn-outline-light" onclick="cargarFlota()"><i class="fa-solid fa-rotate me-1"></i>Actualizar</button>
                 </div>
+
+                <!-- Alerta de estado GPS por chofer (encendido / apagado) -->
+                <div id="alertaGps" class="alert alert-secondary small mb-3">Verificando estado del GPS de los choferes...</div>
+                <div class="table-responsive mb-4">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead><tr><th>Chofer</th><th>Vehículo</th><th>Teléfono</th><th>Estado GPS</th><th>Últ. señal</th></tr></thead>
+                        <tbody id="tablaEstadoGps">
+                            <tr><td colspan="5" class="text-center text-secondary">Cargando estado del GPS...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
                 <div id="mapaFlota" class="mb-3"></div>
                 <div class="table-responsive">
                     <table class="table table-dark table-striped align-middle">
@@ -602,9 +656,47 @@
             });
     }
 
+    function cargarEstadoGps() {
+        fetch('{{ request.script_root }}/api/gps/estados')
+            .then(r => r.json())
+            .then(data => {
+                const alerta = document.getElementById('alertaGps');
+                const tbody = document.getElementById('tablaEstadoGps');
+                if (!alerta || !tbody) return;
+                const choferes = data.choferes || [];
+                if (choferes.length === 0) {
+                    alerta.className = 'alert alert-secondary small mb-3';
+                    alerta.textContent = 'No hay choferes registrados.';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Sin choferes.</td></tr>';
+                    return;
+                }
+                const apagados = data.apagados || [];
+                if (apagados.length === 0) {
+                    alerta.className = 'alert alert-success small mb-3';
+                    alerta.innerHTML = '✅ Todos los choferes tienen el GPS <b>ENCENDIDO</b>.';
+                } else {
+                    alerta.className = 'alert alert-danger small mb-3';
+                    alerta.innerHTML = '🚨 <b>ALERTA GPS</b> — ubicación APAGADA / sin señal en: ' +
+                        apagados.map(c => c.chofer).join(', ') +
+                        '. (Notificado a master, Luis y Jorge.)';
+                }
+                tbody.innerHTML = choferes.map(c => {
+                    let badge;
+                    if (c.estado === 'encendido') badge = '<span class="badge bg-success">ENCENDIDO</span>';
+                    else if (c.estado === 'apagado') badge = '<span class="badge bg-danger">APAGADO</span>';
+                    else badge = '<span class="badge bg-secondary">SIN DATOS</span>';
+                    return `<tr><td>${c.chofer}</td><td>${c.vehiculo}</td><td>${c.telefono}</td><td>${badge}</td><td>${c.actualizado || '—'}</td></tr>`;
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
     document.querySelector('[data-bs-target="#pills-gps"]').addEventListener('shown.bs.tab', function () {
-        setTimeout(() => { initMapa(); mapaFlota.invalidateSize(); cargarFlota(); }, 200);
+        setTimeout(() => { initMapa(); mapaFlota.invalidateSize(); cargarFlota(); cargarEstadoGps(); }, 200);
     });
+    // Alerta de GPS siempre vigilada: se refresca cada 30s aunque no estés en la pestaña
+    cargarEstadoGps();
+    setInterval(cargarEstadoGps, 30000);
 
     // --- Corrección de registros con clave de autorización ---
     const modalEvento = new bootstrap.Modal(document.getElementById('modalEvento'));
