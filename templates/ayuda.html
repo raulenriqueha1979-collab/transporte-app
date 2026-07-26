@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container pb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="fa-solid fa-circle-question text-info me-2"></i>Ayuda: ¿Cómo funciona el sistema?</h2>
+        <a href="{{ request.script_root }}/inicio" class="btn btn-outline-light btn-sm">Volver</a>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">1. Roles del sistema</h4>
+        <ul>
+            <li><strong>Master:</strong> ve y controla todo. Registra vehículos y choferes, confirma registros, corrige con clave, consulta auditoría y emite todos los reportes.</li>
+            <li><strong>Administrador:</strong> registra choferes, vehículos y viajes; revisa, confirma o rechaza lo que reporta el chofer; corrige errores con su clave (queda en auditoría) y emite reportes.</li>
+            <li><strong>Chofer:</strong> tiene su propio usuario y contraseña, ve únicamente el vehículo asignado, transmite su ubicación GPS desde el teléfono y registra despachos, combustible, mantenimiento, peajes y otros gastos.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">2. Registrar vehículos y choferes (admin/master)</h4>
+        <ul>
+            <li>En <em>Vehículos</em>: coloca placa, modelo y kilometraje inicial.</li>
+            <li>En <em>Choferes</em>: nombre, cédula, teléfono (para el GPS), usuario, contraseña y vehículo asignado. El chofer entra con ese usuario y contraseña.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">3. Despachos / viajes (chofer)</h4>
+        <ul>
+            <li>El chofer registra origen, destino, monto del flete y % de comisión; el sistema calcula su comisión (2 decimales).</li>
+            <li>Adjunta la <strong>foto de la guía</strong> de lo que despacha.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">4. Combustible, mantenimiento, peajes y otros gastos (chofer)</h4>
+        <ul>
+            <li>Elige el <strong>tipo</strong>: Combustible, Aceite/Filtro, Cauchos, Reparación/Repuestos, Peaje u Otros gastos.</li>
+            <li>Indica la <strong>fecha de la operación</strong> (por defecto el día actual, pero puedes cambiarla).</li>
+            <li>Asocia el gasto al <strong>viaje/despacho</strong> correspondiente para saber cuánto costó cada viaje.</li>
+            <li>En combustible, coloca los <strong>litros</strong>. Adjunta foto del recibo/factura y, si aplica, foto del odómetro.</li>
+            <li>Todo registro queda <strong>Pendiente</strong> hasta que el administrador lo confirme o rechace.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">5. GPS</h4>
+        <ul>
+            <li>El teléfono del chofer envía su ubicación automáticamente (concede el permiso de ubicación en el navegador).</li>
+            <li>Master y admin ven la última posición de cada vehículo en el mapa de <em>Monitoreo GPS</em>.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">6. Confirmar o rechazar registros (admin/master)</h4>
+        <ul>
+            <li>En <em>Mantenimiento</em>, cada registro del chofer se confirma (✓) o rechaza (✗).</li>
+            <li>Al confirmar combustible/mantenimiento se actualiza el odómetro del vehículo.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">7. Corregir con clave y auditoría (admin/master)</h4>
+        <ul>
+            <li>Si hay un error en un registro del chofer, admin/master puede corregirlo con el botón <i class="fa-solid fa-pen"></i>.</li>
+            <li>Cada corrección exige <strong>reingresar la clave</strong> del admin/master y un <strong>motivo</strong>.</li>
+            <li>Todo cambio queda en <em>Auditoría</em>: quién cambió, qué cambió (valor anterior → nuevo), cuándo y por qué.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4 mb-4">
+        <h4 class="text-primary">8. Reportes PDF y Excel</h4>
+        <ul>
+            <li><strong>Viajes/comisiones</strong> y <strong>mantenimiento/combustible</strong> por rango de fechas.</li>
+            <li><strong>Informe financiero</strong> por viaje, por fecha y por transporte: muestra ingreso (flete), comisión del chofer, gastos (peajes/combustible) y <strong>ganancia neta</strong>.</li>
+            <li>El chofer puede emitir el reporte financiero de <em>sus propios</em> viajes; admin y master, de todos.</li>
+            <li>Ganancia neta = Flete − Comisión del chofer − Gastos asociados.</li>
+        </ul>
+    </div>
+
+    <div class="card-custom p-4">
+        <h4 class="text-primary">9. Usuarios iniciales</h4>
+        <p class="mb-0">Master: <code>master</code> · Admin: <code>admin</code>. Cambia las contraseñas iniciales lo antes posible.</p>
+    </div>
+</div>
+{% endblock %}
