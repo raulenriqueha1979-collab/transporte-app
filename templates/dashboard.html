@@ -321,11 +321,11 @@
             <!-- TAB MANTENIMIENTO -->
             <div class="tab-pane fade" id="pills-mantenimiento">
                 <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Registros de Combustible y Mantenimiento</h5>
-                <p class="text-secondary small">Los choferes registran <b>COMBUSTIBLE</b>, <b>CAMBIO DE CAUCHOS</b>, <b>REPUESTOS</b> y <b>OTROS</b> (en $), y <b>PEAJE</b> (en Bs, con foto del recibo). El <b>cambio de aceite y filtro</b> lo registra únicamente Luis. Confirma o rechaza cada registro.</p>
+                <p class="text-secondary small">Los choferes registran <b>COMBUSTIBLE</b>, <b>CAMBIO DE CAUCHOS</b>, <b>REPUESTOS</b> y <b>OTROS</b> (en $), y <b>PEAJE</b> (en Bs, con foto del recibo). El <b>cambio de aceite y filtro, aceites y otros gastos</b> (en $) los registra Luis desde el formulario de abajo. Confirma o rechaza cada registro.</p>
 
                 {% if current_user.rol == 'admin' %}
                 <div class="card bg-dark border-warning mb-4">
-                    <div class="card-header fw-bold text-warning"><i class="fa-solid fa-oil-can me-2"></i>Registrar Cambio de Aceite y Filtro (solo Luis · en $)</div>
+                    <div class="card-header fw-bold text-warning"><i class="fa-solid fa-oil-can me-2"></i>Registrar Gasto — Luis (en $)</div>
                     <div class="card-body">
                         <form action="{{ request.script_root }}/admin/registrar-aceite-filtro" method="POST" enctype="multipart/form-data" class="row g-2 align-items-end">
                             <div class="col-md-3">
@@ -335,6 +335,19 @@
                                     {% for veh in vehiculos %}
                                     <option value="{{ veh.id }}">{{ veh.placa }} · {{ veh.modelo }}</option>
                                     {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Tipo de Gasto</label>
+                                <select name="tipo" class="form-select form-select-sm" required>
+                                    <option value="Aceite/Filtro">CAMBIO DE ACEITE Y FILTRO</option>
+                                    <option value="Aceites">ACEITES</option>
+                                    <option value="Cauchos">CAMBIO DE CAUCHOS</option>
+                                    <option value="Repuestos">REPUESTOS</option>
+                                    <option value="Reparacion">REPARACIÓN</option>
+                                    <option value="Taller">TALLER</option>
+                                    <option value="Combustible">COMBUSTIBLE</option>
+                                    <option value="Otros">OTROS</option>
                                 </select>
                             </div>
                             <div class="col-md-2">

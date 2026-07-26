@@ -639,17 +639,30 @@ def registrar_evento():
     return redirect(url_for('panel_chofer'))
 
 
+# Gastos que puede registrar Luis (rol admin) directamente, en $.
+GASTOS_ADMIN = ('Aceite/Filtro', 'Aceites', 'Cauchos', 'Repuestos',
+                'Reparacion', 'Taller', 'Combustible', 'Otros')
+
+
 @app.route('/admin/registrar-aceite-filtro', methods=['POST'])
 @roles_required(ROL_ADMIN)
 def registrar_aceite_filtro():
-    """Cambio de aceite y filtro: lo registra únicamente Luis (rol admin), en $."""
+    """Registro de gastos por Luis (rol admin), en $.
+
+    Incluye cambio de aceite y filtro, aceites y otros gastos de mantenimiento.
+    """
     vehiculo_id = request.form.get('vehiculo_id')
     if not vehiculo_id or vehiculo_id in ('none', '', '0'):
-        flash('Selecciona el vehículo del cambio de aceite/filtro.', 'danger')
+        flash('Selecciona el vehículo del gasto.', 'danger')
         return redirect(url_for('dashboard'))
     veh = Vehiculo.query.get(int(vehiculo_id))
     if not veh:
         flash('Vehículo no encontrado.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    tipo = request.form.get('tipo') or 'Aceite/Filtro'
+    if tipo not in GASTOS_ADMIN:
+        flash('Tipo de gasto no permitido.', 'danger')
         return redirect(url_for('dashboard'))
 
     kilometraje = round(float(request.form.get('kilometraje') or 0.0), 2)
@@ -666,7 +679,7 @@ def registrar_aceite_filtro():
     evento = EventoVehiculo(
         vehiculo_id=veh.id,
         chofer_id=chofer.id,
-        tipo='Aceite/Filtro',
+        tipo=tipo,
         kilometraje=kilometraje,
         monto_costo=monto_costo,
         moneda='USD',
@@ -679,7 +692,7 @@ def registrar_aceite_filtro():
     )
     db.session.add(evento)
     db.session.commit()
-    flash(f'Cambio de aceite/filtro registrado para {veh.placa}.', 'success')
+    flash(f'Gasto ({tipo}) registrado para {veh.placa}.', 'success')
     return redirect(url_for('dashboard'))
 
 
