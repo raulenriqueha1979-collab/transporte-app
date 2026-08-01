@@ -235,6 +235,38 @@
 
             <!-- TAB VIAJES -->
             <div class="tab-pane fade" id="pills-viajes">
+                <div class="card bg-dark border-success mb-4">
+                    <div class="card-header fw-bold text-success"><i class="fa-solid fa-money-bill-transfer me-2"></i>Tasas y comisión — vigentes</div>
+                    <div class="card-body">
+                        <div class="row text-center mb-3">
+                            <div class="col-md-4"><div class="small text-secondary">Tasa de planta (Bs/$)</div><div class="h5 text-info mb-0">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</div></div>
+                            <div class="col-md-4"><div class="small text-secondary">Tasa BCV (Bs/$)</div><div class="h5 text-info mb-0">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</div></div>
+                            <div class="col-md-4"><div class="small text-secondary">% Comisión chofer</div><div class="h5 text-warning mb-0">{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}%</div></div>
+                        </div>
+                        {% if current_user.rol == 'admin' %}
+                        <form action="{{ request.script_root }}/admin/tasas" method="POST" class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small">Tasa de planta (Bs/$)</label>
+                                <input type="number" step="0.01" name="tasa_planta" class="form-control form-control-sm" value="{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Tasa BCV (Bs/$)</label>
+                                <input type="number" step="0.01" name="tasa_bcv" class="form-control form-control-sm" value="{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">% Comisión chofer</label>
+                                <input type="number" step="0.1" name="comision_pct" class="form-control form-control-sm" value="{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}">
+                            </div>
+                            <div class="col-md-3 d-grid">
+                                <button type="submit" class="btn btn-success btn-sm"><i class="fa-solid fa-floppy-disk me-1"></i>Guardar (Luis)</button>
+                            </div>
+                            <div class="col-12"><small class="text-secondary">Solo Luis (administración) puede modificarlas. Todo cambio queda en Auditoría.</small></div>
+                        </form>
+                        {% else %}
+                        <p class="text-secondary small mb-0">Estas tasas y la comisión solo las modifica Luis (administración).</p>
+                        {% endif %}
+                    </div>
+                </div>
                 <div class="row g-4">
                     <div class="col-md-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-truck-ramp-box me-2 text-warning"></i>Crear Nueva Hoja de Ruta</h5>
@@ -272,7 +304,7 @@
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label small">% Comisión Chofer</label>
-                                    <input type="number" step="0.1" name="porcentaje_comision" class="form-control" value="10.0" required>
+                                    <input type="number" step="0.1" name="porcentaje_comision" class="form-control" value="{{ "%.1f"|format(comision_pct if comision_pct else 10.0) }}" required>
                                 </div>
                             </div>
                             <button type="submit" class="btn btn-warning w-100"><i class="fa-solid fa-paper-plane me-2"></i>Asignar Viaje</button>

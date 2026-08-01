@@ -165,6 +165,36 @@ class Auditoria(db.Model):
     usuario = db.relationship('Usuario')
 
 
+class Ajuste(db.Model):
+    """Parámetros globales que solo administra Luis (tasas y % de comisión)."""
+    clave = db.Column(db.String(30), primary_key=True)  # TASA_PLANTA, TASA_BCV, COMISION_PCT
+    valor = db.Column(db.Float, default=0.0)
+    actualizado = db.Column(db.DateTime, default=datetime.now)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'))
+
+    usuario = db.relationship('Usuario')
+
+
+COMISION_DEFAULT = 10.0
+
+
+def get_ajuste(clave, default=0.0):
+    a = Ajuste.query.get(clave)
+    return a.valor if (a and a.valor is not None) else default
+
+
+def set_ajuste(clave, valor, usuario_id=None):
+    a = Ajuste.query.get(clave)
+    if not a:
+        a = Ajuste(clave=clave)
+        db.session.add(a)
+    a.valor = valor
+    a.actualizado = datetime.now()
+    if usuario_id:
+        a.usuario_id = usuario_id
+    return a
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return Usuario.query.get(int(user_id))
@@ -273,6 +303,9 @@ def dashboard():
         total_comisiones=total_comisiones,
         total_gastos=total_gastos,
         total_peaje_bs=total_peaje_bs,
+        tasa_planta=get_ajuste('TASA_PLANTA', 0.0),
+        tasa_bcv=get_ajuste('TASA_BCV', 0.0),
+        comision_pct=get_ajuste('COMISION_PCT', COMISION_DEFAULT),
         hoy=date.today().isoformat(),
     )
 
@@ -582,7 +615,10 @@ def panel_chofer():
               .order_by(Viaje.fecha.desc())
               .limit(20).all())
     return render_template('chofer.html', vehiculo=vehiculo, eventos=eventos,
-                           viajes=viajes, hoy=date.today().isoformat())
+                           viajes=viajes, hoy=date.today().isoformat(),
+                           comision_pct=get_ajuste('COMISION_PCT', COMISION_DEFAULT),
+                           tasa_planta=get_ajuste('TASA_PLANTA', 0.0),
+                           tasa_bcv=get_ajuste('TASA_BCV', 0.0))
 
 
 @app.route('/chofer/registrar-evento', methods=['POST'])
@@ -700,6 +736,41 @@ def registrar_aceite_filtro():
     return redirect(url_for('dashboard'))
 
 
+@app.route('/admin/tasas', methods=['POST'])
+@roles_required(ROL_ADMIN)
+def admin_tasas():
+    """Solo Luis (admin) fija la Tasa de planta, la Tasa BCV y el % de comisión.
+
+    Todo cambio queda registrado en Auditoría.
+    """
+    campos = (
+        ('TASA_PLANTA', 'tasa_planta', 'Tasa de planta (Bs/$)'),
+        ('TASA_BCV', 'tasa_bcv', 'Tasa BCV (Bs/$)'),
+        ('COMISION_PCT', 'comision_pct', '% Comisión chofer'),
+    )
+    cambios = []
+    for clave, campo, label in campos:
+        raw = request.form.get(campo)
+        if raw is None or str(raw).strip() == '':
+            continue
+        try:
+            nuevo = round(float(raw), 2)
+        except ValueError:
+            continue
+        anterior = get_ajuste(clave, 0.0)
+        if anterior != nuevo:
+            set_ajuste(clave, nuevo, current_user.id)
+            cambios.append(f"{label}: {anterior} -> {nuevo}")
+    if cambios:
+        _registrar_auditoria('Ajuste', 0, cambios,
+                             'Tasas/comisión actualizadas por administración')
+        db.session.commit()
+        flash('Guardado: ' + '; '.join(cambios), 'success')
+    else:
+        flash('No hubo cambios en tasas/comisión.', 'info')
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/chofer/crear-viaje', methods=['POST'])
 @roles_required(ROL_CHOFER)
 def chofer_crear_viaje():
@@ -710,7 +781,8 @@ def chofer_crear_viaje():
     origen = (request.form.get('origen') or '').strip()
     destino = (request.form.get('destino') or '').strip()
     monto_flete = round(float(request.form.get('monto_flete') or 0.0), 2)
-    porcentaje_comision = round(float(request.form.get('porcentaje_comision') or 0.0), 2)
+    # La comisión es fija (la fija Luis); el chofer no la puede cambiar.
+    porcentaje_comision = get_ajuste('COMISION_PCT', COMISION_DEFAULT)
 
     if not (origen and destino):
         flash('Indica origen y destino del despacho.', 'danger')
@@ -1445,6 +1517,9 @@ def init_db():
         db.create_all()
         migrar_esquema()
         seed_usuarios()
+        if not Ajuste.query.get('COMISION_PCT'):
+            set_ajuste('COMISION_PCT', COMISION_DEFAULT)
+            db.session.commit()
 
 
 init_db()
