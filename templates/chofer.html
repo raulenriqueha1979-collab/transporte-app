@@ -55,6 +55,12 @@
                     <a href="{{ request.script_root }}/ayuda" class="btn btn-outline-secondary btn-sm ms-2">❓ Ayuda</a>
                 </div>
             </div>
+            <div class="card-body border-top pt-2">
+                <div class="row text-center g-2">
+                    <div class="col-6"><div class="small text-secondary">Tasa de planta (Bs/$)</div><div class="fw-bold text-primary">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</div></div>
+                    <div class="col-6"><div class="small text-secondary">Tasa BCV (Bs/$)</div><div class="fw-bold text-primary">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</div></div>
+                </div>
+            </div>
         </div>
 
         {% if vehiculo %}

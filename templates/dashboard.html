@@ -73,6 +73,28 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-info">
+                <span class="text-secondary small fw-bold">TASA DE PLANTA (Bs/$)</span>
+                <h3 class="fw-bold mt-1 text-info">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-info">
+                <span class="text-secondary small fw-bold">TASA BCV (Bs/$)</span>
+                <h3 class="fw-bold mt-1 text-info">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-warning">
+                <span class="text-secondary small fw-bold">% COMISIÓN CHOFER</span>
+                <h3 class="fw-bold mt-1 text-warning">{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}%</h3>
+                <small class="text-secondary">{% if current_user.rol == 'admin' %}Edítalas en la pestaña "Asignar Viaje".{% else %}Las modifica Luis (administración).{% endif %}</small>
+            </div>
+        </div>
+    </div>
+
     <div class="card-custom p-4">
         <ul class="nav nav-pills mb-4 flex-wrap" id="pills-tab" role="tablist">
             <li class="nav-item">
