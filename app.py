@@ -109,6 +109,10 @@ class Viaje(db.Model):
     monto_comision = db.Column(db.Float, default=0.0, nullable=False)
     estado = db.Column(db.String(20), default='Asignado', nullable=False)
     guia = db.Column(db.String(255))  # Foto/documento de la guía de despacho
+    # Pago del viaje recibido por el chofer (si le cancelan)
+    monto_pagado = db.Column(db.Float, default=0.0)
+    moneda_pago = db.Column(db.String(3), default='USD')  # USD o BS
+    foto_pago = db.Column(db.String(255))  # Foto de los billetes / comprobante del pago
     fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)
 
     vehiculo = db.relationship('Vehiculo', backref='viajes')
@@ -714,6 +718,17 @@ def chofer_crear_viaje():
 
     guia = guardar_foto(request.files.get('guia'))
     monto_comision = round(monto_flete * porcentaje_comision / 100.0, 2)
+
+    # Pago del viaje (si le cancelan): monto, moneda y foto de los billetes
+    monto_pagado = round(float(request.form.get('monto_pagado') or 0.0), 2)
+    moneda_pago = (request.form.get('moneda_pago') or 'USD').strip().upper()
+    if moneda_pago not in ('USD', 'BS'):
+        moneda_pago = 'USD'
+    foto_pago = guardar_foto(request.files.get('foto_pago'))
+    if monto_pagado > 0 and not foto_pago:
+        flash('Para registrar el pago del viaje debes anexar la foto de los billetes.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
     viaje = Viaje(
         origen=origen,
         destino=destino,
@@ -723,12 +738,49 @@ def chofer_crear_viaje():
         porcentaje_comision=porcentaje_comision,
         monto_comision=monto_comision,
         guia=guia,
+        monto_pagado=monto_pagado,
+        moneda_pago=moneda_pago,
+        foto_pago=foto_pago,
         estado='Reportado',
         fecha=datetime.now(),
     )
     db.session.add(viaje)
     db.session.commit()
-    flash(f'Despacho registrado. Tu comisión es ${monto_comision:,.2f}.', 'success')
+    if monto_pagado > 0:
+        flash(f'Despacho registrado. Comisión ${monto_comision:,.2f}. '
+              f'Pago del viaje anexado: {monto_pagado:,.2f} {moneda_pago}.', 'success')
+    else:
+        flash(f'Despacho registrado. Tu comisión es ${monto_comision:,.2f}.', 'success')
+    return redirect(url_for('panel_chofer'))
+
+
+@app.route('/chofer/viaje/<int:viaje_id>/pago', methods=['POST'])
+@login_required
+def chofer_registrar_pago(viaje_id):
+    """El chofer anexa el pago del viaje (si le cancelan después de cargarlo)."""
+    viaje = Viaje.query.get_or_404(viaje_id)
+    if viaje.chofer_id != current_user.id:
+        flash('Solo puedes registrar el pago de tus propios viajes.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
+    monto_pagado = round(float(request.form.get('monto_pagado') or 0.0), 2)
+    moneda_pago = (request.form.get('moneda_pago') or 'USD').strip().upper()
+    if moneda_pago not in ('USD', 'BS'):
+        moneda_pago = 'USD'
+    if monto_pagado <= 0:
+        flash('Indica el monto que te cancelaron.', 'danger')
+        return redirect(url_for('panel_chofer'))
+    foto_pago = guardar_foto(request.files.get('foto_pago'))
+    if not foto_pago and not viaje.foto_pago:
+        flash('Para registrar el pago del viaje debes anexar la foto de los billetes.', 'danger')
+        return redirect(url_for('panel_chofer'))
+
+    viaje.monto_pagado = monto_pagado
+    viaje.moneda_pago = moneda_pago
+    if foto_pago:
+        viaje.foto_pago = foto_pago
+    db.session.commit()
+    flash(f'Pago del viaje #{viaje.id} anexado: {monto_pagado:,.2f} {moneda_pago}.', 'success')
     return redirect(url_for('panel_chofer'))
 
 
@@ -1375,6 +1427,9 @@ def migrar_esquema():
     columnas = {
         'evento_vehiculo': [("moneda", "VARCHAR(3) DEFAULT 'USD'")],
         'usuario': [("gps_activo", "BOOLEAN"), ("gps_actualizado", "DATETIME")],
+        'viaje': [("monto_pagado", "FLOAT DEFAULT 0.0"),
+                  ("moneda_pago", "VARCHAR(3) DEFAULT 'USD'"),
+                  ("foto_pago", "VARCHAR(255)")],
     }
     with db.engine.connect() as conn:
         for tabla, cols in columnas.items():

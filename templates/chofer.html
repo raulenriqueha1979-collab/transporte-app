@@ -162,6 +162,26 @@
                         <label class="form-label fw-semibold">Foto de la Guía de Despacho</label>
                         <input type="file" name="guia" class="form-control" accept="image/*" capture="environment">
                     </div>
+                    <hr>
+                    <div class="fw-bold mb-2">Pago del viaje (si te cancelan)</div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-8">
+                            <label class="form-label fw-semibold">Monto que te pagaron</label>
+                            <input type="number" step="0.01" name="monto_pagado" class="form-control" value="0.00" placeholder="Ej: 300">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-semibold">Moneda</label>
+                            <select name="moneda_pago" class="form-select">
+                                <option value="USD">$</option>
+                                <option value="BS">Bs</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Foto de los billetes / comprobante</label>
+                        <input type="file" name="foto_pago" class="form-control" accept="image/*" capture="environment">
+                        <small class="text-muted">Si te cancelan, toma la foto del pago (ej. $300). Obligatoria si indicas un monto.</small>
+                    </div>
                     <button type="submit" class="btn btn-primary w-100 py-3 fw-bold">Registrar Despacho</button>
                 </form>
             </div>
@@ -173,7 +193,7 @@
                 <div class="table-responsive">
                     <table class="table table-striped align-middle mb-0">
                         <thead>
-                            <tr><th>Fecha</th><th>Ruta</th><th>Flete</th><th>Comisión</th><th>Guía</th></tr>
+                            <tr><th>Fecha</th><th>Ruta</th><th>Flete</th><th>Comisión</th><th>Guía</th><th>Pago del viaje</th></tr>
                         </thead>
                         <tbody>
                             {% for vj in viajes %}
@@ -183,9 +203,28 @@
                                 <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
                                 <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ "%.2f"|format(vj.porcentaje_comision if vj.porcentaje_comision else 0.0) }}%)</td>
                                 <td>{% if vj.guia %}<a href="{{ request.script_root }}/uploads/{{ vj.guia }}" target="_blank">Ver</a>{% else %}—{% endif %}</td>
+                                <td>
+                                    {% if vj.monto_pagado and vj.monto_pagado > 0 %}
+                                        <span class="fw-semibold">{{ "%.2f"|format(vj.monto_pagado) }} {{ 'Bs' if vj.moneda_pago == 'BS' else '$' }}</span>
+                                        {% if vj.foto_pago %} · <a href="{{ request.script_root }}/uploads/{{ vj.foto_pago }}" target="_blank">Ver billetes</a>{% endif %}
+                                    {% else %}
+                                        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="collapse" data-bs-target="#pago{{ vj.id }}">Registrar pago</button>
+                                        <form action="{{ request.script_root }}/chofer/viaje/{{ vj.id }}/pago" method="POST" enctype="multipart/form-data" class="collapse mt-2" id="pago{{ vj.id }}">
+                                            <div class="input-group input-group-sm mb-1">
+                                                <input type="number" step="0.01" name="monto_pagado" class="form-control" placeholder="Ej: 300" required>
+                                                <select name="moneda_pago" class="form-select" style="max-width:70px">
+                                                    <option value="USD">$</option>
+                                                    <option value="BS">Bs</option>
+                                                </select>
+                                            </div>
+                                            <input type="file" name="foto_pago" class="form-control form-control-sm mb-1" accept="image/*" capture="environment" required>
+                                            <button type="submit" class="btn btn-success btn-sm w-100">Guardar pago</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% else %}
-                            <tr><td colspan="5" class="text-center text-muted">Aún no has registrado despachos.</td></tr>
+                            <tr><td colspan="6" class="text-center text-muted">Aún no has registrado despachos.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
