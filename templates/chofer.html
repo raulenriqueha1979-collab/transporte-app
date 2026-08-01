@@ -80,7 +80,7 @@
                             <input type="number" step="0.01" name="monto_flete" id="montoFlete" class="form-control" value="0.00" required>
                         </div>
                         <div class="col-6">
-                            <label class="form-label fw-semibold">% Comisión (la fija Luis)</label>
+                            <label class="form-label fw-semibold">% Comisión</label>
                             <input type="number" class="form-control" value="{{ "%.1f"|format(comision_pct) }}" readonly disabled>
                         </div>
                     </div>
@@ -136,6 +136,12 @@
                                 <td>
                                     {% if vj.monto_pagado and vj.monto_pagado > 0 %}
                                         <span class="fw-semibold text-success">{{ "%.2f"|format(vj.monto_pagado) }} {{ 'Bs' if vj.moneda_pago == 'BS' else '$' }}</span>
+                                        {% if vj.moneda_pago == 'BS' %}
+                                            <small class="d-block text-muted">
+                                                {% if tasa_planta and tasa_planta > 0 %}≈ ${{ "%.2f"|format(vj.monto_pagado / tasa_planta) }} (planta {{ "%.2f"|format(tasa_planta) }}){% endif %}
+                                                {% if tasa_bcv and tasa_bcv > 0 %} · ${{ "%.2f"|format(vj.monto_pagado / tasa_bcv) }} (BCV {{ "%.2f"|format(tasa_bcv) }}){% endif %}
+                                            </small>
+                                        {% endif %}
                                         {% if vj.foto_pago %} · <a href="{{ request.script_root }}/uploads/{{ vj.foto_pago }}" target="_blank">Ver billetes</a>{% endif %}
                                     {% else %}
                                         <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="collapse" data-bs-target="#pago{{ vj.id }}">Registrar cobro</button>
