@@ -801,6 +801,8 @@ def chofer_crear_viaje():
         flash('Para registrar el pago del viaje debes anexar la foto de los billetes.', 'danger')
         return redirect(url_for('panel_chofer'))
 
+    fecha_viaje = parse_fecha(request.form.get('fecha')) or datetime.now()
+
     viaje = Viaje(
         origen=origen,
         destino=destino,
@@ -814,7 +816,7 @@ def chofer_crear_viaje():
         moneda_pago=moneda_pago,
         foto_pago=foto_pago,
         estado='Reportado',
-        fecha=datetime.now(),
+        fecha=fecha_viaje,
     )
     db.session.add(viaje)
     db.session.commit()

@@ -81,6 +81,12 @@
                         </div>
                     </div>
                     <div class="row g-2 mb-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Fecha del viaje</label>
+                            <input type="date" name="fecha" class="form-control" value="{{ hoy }}" required>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
                         <div class="col-6">
                             <label class="form-label fw-semibold">Monto del Flete ($)</label>
                             <input type="number" step="0.01" name="monto_flete" id="montoFlete" class="form-control" value="0.00" required>
