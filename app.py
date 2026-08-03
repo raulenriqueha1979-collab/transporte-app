@@ -134,6 +134,7 @@ class EventoVehiculo(db.Model):
     foto_ticket = db.Column(db.String(255))
     foto_odometro = db.Column(db.String(255))
     estado = db.Column(db.String(20), default='Pendiente', nullable=False)  # Pendiente / Confirmado / Rechazado
+    origen = db.Column(db.String(10), default='chofer')  # 'chofer' (lo reporta el chofer) / 'admin' (lo anexa Luis)
     fecha = db.Column(db.DateTime, default=datetime.now, nullable=False)  # Fecha de la operación
     confirmado_por_id = db.Column(db.Integer, db.ForeignKey('usuario.id'))
     fecha_confirmacion = db.Column(db.DateTime)
@@ -142,6 +143,17 @@ class EventoVehiculo(db.Model):
     chofer = db.relationship('Usuario', foreign_keys=[chofer_id])
     confirmado_por = db.relationship('Usuario', foreign_keys=[confirmado_por_id])
     viaje = db.relationship('Viaje', backref='gastos')
+
+    @property
+    def es_admin(self):
+        o = self.origen
+        if not o:  # heurística para registros antiguos sin la columna
+            o = 'admin' if (self.viaje_id is None and self.confirmado_por_id) else 'chofer'
+        return o == 'admin'
+
+    @property
+    def origen_label(self):
+        return 'Gasto anexado por administrador' if self.es_admin else 'Gasto reportado por chofer'
 
 
 class RegistroGPS(db.Model):
@@ -671,6 +683,7 @@ def registrar_evento():
         foto_ticket=foto_ticket,
         foto_odometro=foto_odometro,
         estado='Pendiente',
+        origen='chofer',
         fecha=fecha_op,
     )
     db.session.add(evento)
@@ -726,6 +739,7 @@ def registrar_aceite_filtro():
         detalles=detalles,
         foto_ticket=foto_ticket,
         estado='Confirmado',
+        origen='admin',
         fecha=fecha_op,
         confirmado_por_id=current_user.id,
         fecha_confirmacion=datetime.now(),
@@ -1321,13 +1335,8 @@ def _finanzas_viajes(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None)
         comision = v.monto_comision or 0.0
         ganancia = round(ingreso - comision - gastos, 2)
         # Detalle de egresos (cada gasto por separado)
-        detalle = [{
-            'fecha': g.fecha,
-            'tipo': g.tipo or 'Otros',
-            'detalles': g.detalles or '',
-            'monto': round(g.monto_costo or 0.0, 2),
-            'moneda': (g.moneda or 'USD'),
-        } for g in sorted(activos, key=lambda x: x.fecha or datetime.min)]
+        detalle = [_gasto_detalle(g) for g in
+                   sorted(activos, key=lambda x: x.fecha or datetime.min)]
         filas.append({
             'viaje': v,
             'fecha': v.fecha,
@@ -1344,23 +1353,85 @@ def _finanzas_viajes(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None)
     return filas
 
 
-def _finanzas_por_chofer(filas):
-    """Agrupa las filas por chofer sumando viajes y gastos (informe general)."""
+def _gasto_detalle(g, con_contexto=False):
+    """Detalle serializable de un egreso, etiquetado por su origen."""
+    d = {
+        'fecha': g.fecha,
+        'tipo': g.tipo or 'Otros',
+        'detalles': g.detalles or '',
+        'monto': round(g.monto_costo or 0.0, 2),
+        'moneda': (g.moneda or 'USD'),
+        'admin': g.es_admin,
+        'origen': g.origen_label,
+    }
+    if con_contexto:
+        d['chofer'] = g.chofer.nombre if g.chofer else 'N/A'
+        d['vehiculo'] = g.vehiculo.placa if g.vehiculo else 'N/A'
+    return d
+
+
+def _fila_egreso_html(d):
+    """Fila HTML de un egreso detallado, etiquetada por su origen."""
+    simbolo = 'Bs' if d['moneda'] == 'BS' else '$'
+    extra = f" — {d['detalles']}" if d['detalles'] else ''
+    fecha_g = d['fecha'].strftime('%Y-%m-%d') if d['fecha'] else ''
+    cls = 'egreso admin' if d['admin'] else 'egreso'
+    etiqueta = 'Admin' if d['admin'] else 'Chofer'
+    return f"""
+        <tr class="{cls}">
+            <td>{fecha_g}</td>
+            <td colspan="4">↳ [{etiqueta}] {d['tipo']}{extra}</td>
+            <td style="text-align:right;">{d['monto']:,.2f} {simbolo}</td>
+            <td></td>
+        </tr>
+    """
+
+
+def _finanzas_gastos_sueltos(fecha_desde, fecha_hasta, vehiculo_id=None, chofer_id=None):
+    """Egresos NO ligados a un viaje (típicamente los que anexa Luis/admin)."""
+    q = EventoVehiculo.query.filter(EventoVehiculo.estado != 'Rechazado',
+                                    EventoVehiculo.viaje_id.is_(None))
+    d = parse_fecha(fecha_desde)
+    h = parse_fecha(fecha_hasta, fin_dia=True)
+    if d:
+        q = q.filter(EventoVehiculo.fecha >= d)
+    if h:
+        q = q.filter(EventoVehiculo.fecha <= h)
+    if vehiculo_id and str(vehiculo_id) not in ('none', '', '0'):
+        q = q.filter(EventoVehiculo.vehiculo_id == int(vehiculo_id))
+    if chofer_id:
+        q = q.filter(EventoVehiculo.chofer_id == int(chofer_id))
+    return [_gasto_detalle(g, con_contexto=True)
+            for g in q.order_by(EventoVehiculo.fecha).all()]
+
+
+def _finanzas_por_chofer(filas, sueltos=None):
+    """Agrupa por chofer sumando viajes y TODOS los gastos (chofer + admin)."""
     grupos = {}
-    for f in filas:
-        g = grupos.setdefault(f['chofer'], {
-            'chofer': f['chofer'], 'viajes': 0,
+
+    def _g(nombre):
+        return grupos.setdefault(nombre, {
+            'chofer': nombre, 'viajes': 0,
             'ingreso': 0.0, 'comision': 0.0, 'gastos': 0.0,
             'peaje_bs': 0.0, 'ganancia': 0.0,
         })
+
+    for f in filas:
+        g = _g(f['chofer'])
         g['viajes'] += 1
         g['ingreso'] += f['ingreso']
         g['comision'] += f['comision']
         g['gastos'] += f['gastos']
         g['peaje_bs'] += f['peaje_bs']
-        g['ganancia'] += f['ganancia']
+    for s in (sueltos or []):
+        g = _g(s['chofer'])
+        if s['moneda'] == 'BS':
+            g['peaje_bs'] += s['monto']
+        else:
+            g['gastos'] += s['monto']
     for g in grupos.values():
-        for k in ('ingreso', 'comision', 'gastos', 'peaje_bs', 'ganancia'):
+        g['ganancia'] = round(g['ingreso'] - g['comision'] - g['gastos'], 2)
+        for k in ('ingreso', 'comision', 'gastos', 'peaje_bs'):
             g[k] = round(g[k], 2)
     return sorted(grupos.values(), key=lambda x: x['chofer'])
 
@@ -1368,9 +1439,10 @@ def _finanzas_por_chofer(filas):
 def _finanzas_scope():
     """Filtros según rol y modo de detalle.
 
-    - General (sin chofer): resume por chofer (suma viajes y gastos).
-    - Por chofer: detalla cada viaje y sus egresos.
-    El chofer autenticado siempre ve solo sus propios viajes (detallado).
+    - General (sin chofer): resume por chofer (suma viajes y todos los gastos).
+    - Por chofer: detalla cada viaje y sus egresos, más los gastos anexados
+      por el administrador (sin viaje) de ese chofer.
+    El chofer autenticado siempre ve solo sus propios datos (detallado).
     """
     fd = request.args.get('fecha_desde')
     fh = request.args.get('fecha_hasta')
@@ -1382,18 +1454,19 @@ def _finanzas_scope():
         if chofer_id in ('none', '', '0', None):
             chofer_id = None
     filas = _finanzas_viajes(fd, fh, veh, chofer_id)
+    sueltos = _finanzas_gastos_sueltos(fd, fh, veh, chofer_id)
     detallado = bool(chofer_id)
     chofer_nombre = None
     if chofer_id:
         c = Usuario.query.get(int(chofer_id))
         chofer_nombre = (c.nombre or c.username) if c else None
-    return filas, fd, fh, detallado, chofer_nombre
+    return filas, sueltos, fd, fh, detallado, chofer_nombre
 
 
 @app.route('/reporte/financiero/excel', methods=['GET'])
 @login_required
 def reporte_financiero_excel():
-    filas, fd, fh, detallado, chofer_nombre = _finanzas_scope()
+    filas, sueltos, fd, fh, detallado, chofer_nombre = _finanzas_scope()
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1402,6 +1475,7 @@ def reporte_financiero_excel():
     header_fill = PatternFill(start_color="065F46", end_color="065F46", fill_type="solid")
     header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
     sub_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    admin_fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
     bold = Font(bold=True)
 
     def _estilar_header(ncols):
@@ -1411,9 +1485,19 @@ def reporte_financiero_excel():
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
+    def _fila_egreso(d, fecha=True):
+        etiqueta = 'Admin' if d['admin'] else 'Chofer'
+        ws.append(["", d['fecha'].strftime('%Y-%m-%d') if (fecha and d['fecha']) else '',
+                   f"   ↳ [{etiqueta}] {d['tipo']}" + (f" — {d['detalles']}" if d['detalles'] else ''),
+                   "", "", "", "",
+                   f"{d['monto']:,.2f} {'Bs' if d['moneda'] == 'BS' else '$'}", ""])
+        fill = admin_fill if d['admin'] else sub_fill
+        for c in range(1, 10):
+            ws.cell(row=ws.max_row, column=c).fill = fill
+
     if not detallado:
-        # GENERAL: resumen por chofer (suma de viajes y gastos)
-        grupos = _finanzas_por_chofer(filas)
+        # GENERAL: resumen por chofer (suma de viajes y TODOS los gastos)
+        grupos = _finanzas_por_chofer(filas, sueltos)
         headers = ["Chofer", "N° Viajes", "Ingreso Flete ($)",
                    "Comisión Chofer ($)", "Gastos ($)", "Ganancia Neta ($)"]
         ws.append(headers)
@@ -1435,12 +1519,13 @@ def reporte_financiero_excel():
             c.font = bold
             c.number_format = '$#,##0.00'
     else:
-        # POR CHOFER: cada viaje y el detalle de sus egresos
-        headers = ["ID", "Fecha", "Ruta", "Vehículo", "Chofer",
+        # POR CHOFER: cada viaje con el detalle de sus egresos + gastos del admin
+        headers = ["ID", "Fecha", "Ruta / Egreso", "Vehículo", "Chofer",
                    "Ingreso Flete ($)", "Comisión Chofer ($)",
                    "Gastos ($)", "Ganancia Neta ($)"]
         ws.append(headers)
         _estilar_header(len(headers))
+        tot_gas_sueltos = sum(s['monto'] for s in sueltos if s['moneda'] != 'BS')
         for f in filas:
             ws.append([
                 f['viaje'].id,
@@ -1458,23 +1543,27 @@ def reporte_financiero_excel():
             # Detalle de egresos del viaje
             if f['gastos_detalle']:
                 for d in f['gastos_detalle']:
-                    ws.append(["", d['fecha'].strftime('%Y-%m-%d') if d['fecha'] else '',
-                               f"   ↳ Egreso: {d['tipo']}" + (f" — {d['detalles']}" if d['detalles'] else ''),
-                               "", "", "", "",
-                               f"{d['monto']:,.2f} {'Bs' if d['moneda'] == 'BS' else '$'}", ""])
-                    for c in range(1, 10):
-                        ws.cell(row=ws.max_row, column=c).fill = sub_fill
+                    _fila_egreso(d)
             else:
                 ws.append(["", "", "   ↳ Sin egresos registrados", "", "", "", "", "", ""])
                 for c in range(1, 10):
                     ws.cell(row=ws.max_row, column=c).fill = sub_fill
+        # Gastos anexados por el administrador (sin viaje asociado)
+        if sueltos:
+            ws.append(["", "", "GASTOS ANEXADOS POR ADMINISTRADOR (sin viaje)",
+                       "", "", "", "", "", ""])
+            ws.cell(row=ws.max_row, column=3).font = bold
+            for d in sueltos:
+                _fila_egreso(d)
         total_row = ws.max_row + 1
         ws.cell(row=total_row, column=5, value="TOTALES:").font = bold
-        ws.cell(row=total_row, column=6, value=sum(f['ingreso'] for f in filas)).font = bold
-        ws.cell(row=total_row, column=7, value=sum(f['comision'] for f in filas)).font = bold
-        ws.cell(row=total_row, column=8, value=sum(f['gastos'] for f in filas)).font = bold
-        ws.cell(row=total_row, column=9, value=sum(f['ganancia'] for f in filas)).font = bold
-        for col in (6, 7, 9):
+        ws.cell(row=total_row, column=6, value=round(sum(f['ingreso'] for f in filas), 2)).font = bold
+        ws.cell(row=total_row, column=7, value=round(sum(f['comision'] for f in filas), 2)).font = bold
+        ws.cell(row=total_row, column=8,
+                value=round(sum(f['gastos'] for f in filas) + tot_gas_sueltos, 2)).font = bold
+        ws.cell(row=total_row, column=9,
+                value=round(sum(f['ganancia'] for f in filas) - tot_gas_sueltos, 2)).font = bold
+        for col in (6, 7, 8, 9):
             ws.cell(row=total_row, column=col).number_format = '$#,##0.00'
 
     for col in ws.columns:
@@ -1492,15 +1581,16 @@ def reporte_financiero_excel():
 @app.route('/reporte/financiero/pdf', methods=['GET'])
 @login_required
 def reporte_financiero_pdf():
-    filas, fd, fh, detallado, chofer_nombre = _finanzas_scope()
+    filas, sueltos, fd, fh, detallado, chofer_nombre = _finanzas_scope()
+    tot_gas_sueltos = sum(s['monto'] for s in sueltos if s['moneda'] != 'BS')
     tot_ing = sum(f['ingreso'] for f in filas)
     tot_com = sum(f['comision'] for f in filas)
-    tot_gas = sum(f['gastos'] for f in filas)
-    tot_gan = sum(f['ganancia'] for f in filas)
+    tot_gas = sum(f['gastos'] for f in filas) + tot_gas_sueltos
+    tot_gan = sum(f['ganancia'] for f in filas) - tot_gas_sueltos
 
     if not detallado:
-        # GENERAL: resumen por chofer (suma de viajes y gastos)
-        grupos = _finanzas_por_chofer(filas)
+        # GENERAL: resumen por chofer (suma de viajes y TODOS los gastos)
+        grupos = _finanzas_por_chofer(filas, sueltos)
         titulo_modo = "General — resumen por chofer"
         cuerpo = ""
         for g in grupos:
@@ -1550,21 +1640,18 @@ def reporte_financiero_pdf():
             """
             if f['gastos_detalle']:
                 for d in f['gastos_detalle']:
-                    simbolo = 'Bs' if d['moneda'] == 'BS' else '$'
-                    extra = f" — {d['detalles']}" if d['detalles'] else ''
-                    fecha_g = d['fecha'].strftime('%Y-%m-%d') if d['fecha'] else ''
-                    cuerpo += f"""
-                        <tr class="egreso">
-                            <td>{fecha_g}</td>
-                            <td colspan="4">↳ Egreso: {d['tipo']}{extra}</td>
-                            <td style="text-align:right;">{d['monto']:,.2f} {simbolo}</td>
-                            <td></td>
-                        </tr>
-                    """
+                    cuerpo += _fila_egreso_html(d)
             else:
                 cuerpo += """
                     <tr class="egreso"><td></td><td colspan="6">↳ Sin egresos registrados</td></tr>
                 """
+        # Gastos anexados por el administrador (sin viaje asociado)
+        if sueltos:
+            cuerpo += """
+                <tr class="seccion"><td colspan="7">GASTOS ANEXADOS POR ADMINISTRADOR (sin viaje)</td></tr>
+            """
+            for d in sueltos:
+                cuerpo += _fila_egreso_html(d)
         tabla = f"""
         <table>
             <thead><tr>
@@ -1595,6 +1682,8 @@ def reporte_financiero_pdf():
         th {{ background-color: #065F46; color: white; text-align: left; padding: 7px; font-size: 9pt; }}
         td {{ padding: 7px; border-bottom: 1px solid #E5E7EB; font-size: 9pt; }}
         tr.egreso td {{ background:#FEF2F2; color:#7F1D1D; font-size: 8.5pt; padding: 4px 7px 4px 16px; }}
+        tr.egreso.admin td {{ background:#EFF6FF; color:#1E3A8A; }}
+        tr.seccion td {{ background:#E0E7FF; color:#1E3A8A; font-weight: bold; font-size: 9pt; }}
         tfoot td {{ font-weight: bold; background:#F0FDF4; }}
     </style></head><body>
         <div class="header"><h1>Informe de Ingresos, Gastos y Ganancias</h1>
@@ -1644,18 +1733,28 @@ def migrar_esquema():
     Idempotente: se puede ejecutar en cada arranque sin perder datos.
     """
     columnas = {
-        'evento_vehiculo': [("moneda", "VARCHAR(3) DEFAULT 'USD'")],
+        'evento_vehiculo': [("moneda", "VARCHAR(3) DEFAULT 'USD'"),
+                            ("origen", "VARCHAR(10) DEFAULT 'chofer'")],
         'usuario': [("gps_activo", "BOOLEAN"), ("gps_actualizado", "DATETIME")],
         'viaje': [("monto_pagado", "FLOAT DEFAULT 0.0"),
                   ("moneda_pago", "VARCHAR(3) DEFAULT 'USD'"),
                   ("foto_pago", "VARCHAR(255)")],
     }
     with db.engine.connect() as conn:
+        nuevas = set()
         for tabla, cols in columnas.items():
             existentes = {row[1] for row in conn.execute(text(f"PRAGMA table_info({tabla})"))}
             for nombre, definicion in cols:
                 if nombre not in existentes:
                     conn.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}"))
+                    nuevas.add(f"{tabla}.{nombre}")
+        # Backfill del origen de gastos antiguos: 'admin' si no está ligado a un
+        # viaje pero fue confirmado por alguien; el resto queda como 'chofer'.
+        if 'evento_vehiculo.origen' in nuevas:
+            conn.execute(text(
+                "UPDATE evento_vehiculo SET origen='admin' "
+                "WHERE origen IS NULL AND viaje_id IS NULL AND confirmado_por_id IS NOT NULL"))
+            conn.execute(text("UPDATE evento_vehiculo SET origen='chofer' WHERE origen IS NULL"))
         conn.commit()
 
 
