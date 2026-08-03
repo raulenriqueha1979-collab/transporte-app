@@ -460,10 +460,16 @@
                                 </td>
                                 <td>
                                     <div class="d-flex gap-1">
-                                    {% if ev.estado == 'Pendiente' %}
+                                    {% if ev.estado == 'Pendiente' and current_user.rol == 'admin' %}
                                     <form action="{{ request.script_root }}/admin/confirmar-evento/{{ ev.id }}" method="POST" class="d-flex gap-1">
-                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success"><i class="fa-solid fa-check"></i></button>
-                                        <button name="accion" value="rechazar" class="btn btn-sm btn-outline-danger"><i class="fa-solid fa-xmark"></i></button>
+                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success" title="Aprobar (OK)"><i class="fa-solid fa-check"></i></button>
+                                        <button name="accion" value="rechazar" class="btn btn-sm btn-outline-danger" title="Rechazar"><i class="fa-solid fa-xmark"></i></button>
+                                    </form>
+                                    {% elif ev.estado == 'Pendiente' %}
+                                    <span class="text-secondary small">Pendiente de Luis</span>
+                                    {% elif ev.estado == 'Rechazado' and current_user.rol == 'admin' %}
+                                    <form action="{{ request.script_root }}/admin/confirmar-evento/{{ ev.id }}" method="POST">
+                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success" title="Poner OK (aprobar)"><i class="fa-solid fa-check"></i> OK</button>
                                     </form>
                                     {% endif %}
                                     <button type="button" class="btn btn-sm btn-outline-warning btn-editar-evento"

@@ -416,7 +416,7 @@ def crear_viaje():
 
 
 @app.route('/admin/confirmar-evento/<int:evento_id>', methods=['POST'])
-@roles_required(ROL_MASTER, ROL_ADMIN)
+@roles_required(ROL_ADMIN)
 def confirmar_evento(evento_id):
     evento = EventoVehiculo.query.get_or_404(evento_id)
     accion = request.form.get('accion', 'confirmar')
