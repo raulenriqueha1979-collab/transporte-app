@@ -572,18 +572,27 @@
                     <div class="col-12">
                         <div class="card-custom p-3">
                             <h5 class="fw-bold mb-3"><i class="fa-solid fa-sack-dollar me-2 text-success"></i>Informe Financiero: Ingresos, Gastos y Ganancias</h5>
-                            <p class="text-secondary small">Por viaje, por fecha y por transporte. Incluye flete, comisión, gastos (peajes/combustible) y ganancia neta.</p>
+                            <p class="text-secondary small">En <strong>General</strong> suma los viajes y gastos de cada chofer; al elegir un <strong>chofer</strong> detalla cada viaje con sus egresos. Filtra por fecha y transporte.</p>
                             <form action="{{ request.script_root }}/reporte/financiero/pdf" method="GET" target="_blank">
                                 <div class="row g-2 mb-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label class="form-label small">Desde</label>
                                         <input type="date" name="fecha_desde" class="form-control">
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label class="form-label small">Hasta</label>
                                         <input type="date" name="fecha_hasta" class="form-control">
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Chofer</label>
+                                        <select name="chofer_id" class="form-select">
+                                            <option value="none">General (todos)</option>
+                                            {% for chf in choferes %}
+                                            <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
                                         <label class="form-label small">Transporte / Vehículo</label>
                                         <select name="vehiculo_id" class="form-select">
                                             <option value="none">Todos</option>
