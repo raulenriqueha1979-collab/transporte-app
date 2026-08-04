@@ -3,14 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Chofer - Sistema Integral de Transporte</title>
+    <title>Panel de Chofer - San Jorge, C.A.</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background:#eef2f7; }
+        .navbar-brand { font-weight:700; letter-spacing:.3px; }
+        .seccion-num { display:inline-flex; align-items:center; justify-content:center;
+            width:26px; height:26px; border-radius:50%; background:rgba(255,255,255,.25);
+            color:#fff; font-weight:700; font-size:.9rem; margin-right:.5rem; }
+        .card-viaje > .card-header { background:linear-gradient(90deg,#1d4ed8,#3b82f6); color:#fff; }
+        .card-cobro > .card-header { background:linear-gradient(90deg,#047857,#10b981); color:#fff; }
+        .card-gasto > .card-header { background:linear-gradient(90deg,#b45309,#f59e0b); color:#fff; }
+        .card-tabla > .card-header { background:#0f172a; color:#fff; }
+        .card-reporte > .card-header { background:linear-gradient(90deg,#6d28d9,#8b5cf6); color:#fff; }
+        .card { border:none; border-radius:14px; overflow:hidden; }
+        .card-header { font-weight:700; }
+        .badge-comision { background:#0ea5e9; }
+    </style>
 </head>
-<body class="bg-light d-flex flex-column min-vh-100">
-    <nav class="navbar navbar-dark bg-primary mb-3 shadow-sm">
+<body class="d-flex flex-column min-vh-100">
+    <nav class="navbar navbar-dark mb-3 shadow-sm" style="background:linear-gradient(90deg,#0f172a,#1d4ed8);">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1">🚚 Sistema Integral de Transporte</span>
-            <a href="/logout" class="btn btn-outline-light btn-sm">Salir</a>
+            <span class="navbar-brand mb-0 h1">🚚 SAN JORGE, C.A. — Panel del Chofer</span>
+            <a href="{{ request.script_root }}/logout" class="btn btn-outline-light btn-sm">Salir</a>
         </div>
     </nav>
 
@@ -24,84 +39,376 @@
         {% endwith %}
 
         <div class="card shadow-sm mb-3">
-            <div class="card-body">
-                <h6 class="card-subtitle mb-2 text-muted">Bienvenido, <strong>{{ current_user.nombre }}</strong></h6>
-                <h5 class="card-title text-secondary">Vehículo Asignado</h5>
-                {% if vehiculo %}
-                    <p class="h3 text-success mb-1">{{ vehiculo.placa }}</p>
-                    <small class="text-muted">Modelo: {{ vehiculo.modelo }} | Odómetro Actual: {{ vehiculo.kilometraje_actual }} KM</small>
-                {% else %}
-                    <p class="text-danger mb-0">No tienes un vehículo asignado. Contacta al Administrador.</p>
-                {% endif %}
+            <div class="card-body d-flex flex-wrap justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-1 text-muted">Bienvenido, <strong>{{ current_user.nombre }}</strong></h6>
+                    <span class="text-secondary">Vehículo asignado:</span>
+                    {% if vehiculo %}
+                        <span class="h4 text-primary ms-1">{{ vehiculo.placa }}</span>
+                        <small class="text-muted d-block">Modelo: {{ vehiculo.modelo }} · Odómetro: {{ vehiculo.kilometraje_actual }} KM</small>
+                    {% else %}
+                        <span class="text-danger">No tienes un vehículo asignado. Contacta al Administrador.</span>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <span class="badge badge-comision fs-6">Tu comisión: {{ "%.1f"|format(comision_pct) }}%</span>
+                    <a href="{{ request.script_root }}/ayuda" class="btn btn-outline-secondary btn-sm ms-2">❓ Ayuda</a>
+                </div>
+            </div>
+            <div class="card-body border-top pt-2">
+                <div class="row text-center g-2">
+                    <div class="col-6"><div class="small text-secondary">Tasa de planta (Bs/$)</div><div class="fw-bold text-primary">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</div></div>
+                    <div class="col-6"><div class="small text-secondary">Tasa BCV (Bs/$)</div><div class="fw-bold text-primary">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</div></div>
+                </div>
             </div>
         </div>
 
         {% if vehiculo %}
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-white fw-bold">Registrar Evento (Combustible / Mantenimiento)</div>
+
+        <!-- 1) REGISTRAR EL VIAJE -->
+        <div class="card card-viaje shadow-sm mb-4">
+            <div class="card-header"><span class="seccion-num">1</span>Registrar el viaje (origen y destino)</div>
             <div class="card-body">
-                <form action="/chofer/registrar-evento" method="POST" enctype="multipart/form-data">
+                <form action="{{ request.script_root }}/chofer/crear-viaje" method="POST" enctype="multipart/form-data">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Origen</label>
+                            <input type="text" name="origen" class="form-control" required placeholder="Ej: Maracay">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Destino</label>
+                            <input type="text" name="destino" class="form-control" required placeholder="Ej: Caracas">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Fecha del viaje</label>
+                            <input type="date" name="fecha" class="form-control" value="{{ hoy }}" required>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Monto del Flete ($)</label>
+                            <input type="number" step="0.01" name="monto_flete" id="montoFlete" class="form-control" value="0.00" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">% Comisión</label>
+                            <input type="number" class="form-control" value="{{ "%.1f"|format(comision_pct) }}" readonly disabled>
+                        </div>
+                    </div>
+                    <div class="alert alert-primary py-2 mb-3">Tu comisión estimada: <strong id="comisionEstimada">$0.00</strong></div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Tipo de Registro</label>
-                        <select name="tipo" class="form-select" required>
-                            <option value="Combustible">Echar Combustible</option>
-                            <option value="Aceite/Filtro">Cambio de Aceite / Filtro</option>
-                            <option value="Cauchos">Cambio de Cauchos</option>
-                            <option value="Reparacion">Reparación / Taller</option>
+                        <label class="form-label fw-semibold">Foto de la Guía de Despacho</label>
+                        <input type="file" name="guia" class="form-control" accept="image/*">
+                        <small class="text-muted">Puedes tomar la foto o elegirla del archivo del teléfono.</small>
+                    </div>
+
+                    <hr>
+                    <div class="fw-bold text-success mb-2">💵 Cobro del flete (opcional — puedes registrarlo ahora o después)</div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-8">
+                            <label class="form-label fw-semibold">Monto que te pagaron</label>
+                            <input type="number" step="0.01" name="monto_pagado" class="form-control" value="0.00" placeholder="Ej: 300">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-semibold">Moneda</label>
+                            <select name="moneda_pago" class="form-select">
+                                <option value="USD">$</option>
+                                <option value="BS">Bs</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Foto de los billetes / comprobante</label>
+                        <input type="file" name="foto_pago" class="form-control" accept="image/*">
+                        <small class="text-muted">Si te cancelan, anexa la foto del pago (ej. $300). Obligatoria si indicas un monto. Puedes tomarla o elegirla del teléfono.</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold">Registrar viaje</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 2) MIS DESPACHOS + COBRO POSTERIOR -->
+        <div class="card card-cobro shadow-sm mb-4">
+            <div class="card-header"><span class="seccion-num">2</span>Mis despachos y cobro del flete</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>Fecha</th><th>Ruta</th><th>Flete</th><th>Comisión</th><th>Guía</th><th>Cobro del flete</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for vj in viajes %}
+                            <tr>
+                                <td>{{ vj.fecha.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
+                                <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
+                                <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ "%.1f"|format(vj.porcentaje_comision if vj.porcentaje_comision else 0.0) }}%)</td>
+                                <td>{% if vj.guia %}<a href="{{ request.script_root }}/uploads/{{ vj.guia }}" target="_blank">Ver</a>{% else %}—{% endif %}</td>
+                                <td>
+                                    {% if vj.monto_pagado and vj.monto_pagado > 0 %}
+                                        <span class="fw-semibold text-success">{{ "%.2f"|format(vj.monto_pagado) }} {{ 'Bs' if vj.moneda_pago == 'BS' else '$' }}</span>
+                                        {% if vj.moneda_pago == 'BS' %}
+                                            <small class="d-block text-muted">
+                                                {% if tasa_planta and tasa_planta > 0 %}≈ ${{ "%.2f"|format(vj.monto_pagado / tasa_planta) }} (planta {{ "%.2f"|format(tasa_planta) }}){% endif %}
+                                                {% if tasa_bcv and tasa_bcv > 0 %} · ${{ "%.2f"|format(vj.monto_pagado / tasa_bcv) }} (BCV {{ "%.2f"|format(tasa_bcv) }}){% endif %}
+                                            </small>
+                                        {% endif %}
+                                        {% if vj.foto_pago %} · <a href="{{ request.script_root }}/uploads/{{ vj.foto_pago }}" target="_blank">Ver billetes</a>{% endif %}
+                                    {% else %}
+                                        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="collapse" data-bs-target="#pago{{ vj.id }}">Registrar cobro</button>
+                                        <form action="{{ request.script_root }}/chofer/viaje/{{ vj.id }}/pago" method="POST" enctype="multipart/form-data" class="collapse mt-2" id="pago{{ vj.id }}">
+                                            <div class="input-group input-group-sm mb-1">
+                                                <input type="number" step="0.01" name="monto_pagado" class="form-control" placeholder="Ej: 300" required>
+                                                <select name="moneda_pago" class="form-select" style="max-width:70px">
+                                                    <option value="USD">$</option>
+                                                    <option value="BS">Bs</option>
+                                                </select>
+                                            </div>
+                                            <input type="file" name="foto_pago" class="form-control form-control-sm mb-1" accept="image/*" required>
+                                            <button type="submit" class="btn btn-success btn-sm w-100">Guardar cobro</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center text-muted">Aún no has registrado despachos.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3) REGISTRAR GASTOS -->
+        <div class="card card-gasto shadow-sm mb-4">
+            <div class="card-header"><span class="seccion-num">3</span>Registrar gastos (Combustible/Cauchos/Repuestos/Otros en $ · Peaje en Bs)</div>
+            <div class="card-body">
+                <form action="{{ request.script_root }}/chofer/registrar-evento" method="POST" enctype="multipart/form-data" id="formGasto">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Tipo de Registro</label>
+                            <select name="tipo" id="tipoGasto" class="form-select" required>
+                                <option value="Combustible">COMBUSTIBLE (en $)</option>
+                                <option value="Cauchos">CAMBIO DE CAUCHOS (en $)</option>
+                                <option value="Repuestos">REPUESTOS (en $)</option>
+                                <option value="Otros">OTROS (en $)</option>
+                                <option value="Peaje">PEAJE (en Bs)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Fecha de la Operación</label>
+                            <input type="date" name="fecha" class="form-control" value="{{ hoy }}" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Viaje / Despacho asociado (opcional)</label>
+                        <select name="viaje_id" class="form-select">
+                            <option value="none">— Sin viaje asociado —</option>
+                            {% for vj in viajes %}
+                            <option value="{{ vj.id }}">#{{ vj.id }} · {{ vj.fecha.strftime('%Y-%m-%d') }} · {{ vj.origen }} ➔ {{ vj.destino }}</option>
+                            {% endfor %}
                         </select>
+                        <small class="text-muted">Asocia el gasto (combustible o peaje) al viaje realizado.</small>
+                    </div>
+                    <div class="mb-3" id="grpKm">
+                        <label class="form-label fw-semibold">Kilometraje Actual (Odómetro, si aplica)</label>
+                        <input type="number" step="0.1" name="kilometraje" class="form-control" value="0" placeholder="Ej: 125000">
+                    </div>
+                    <div class="mb-3" id="grpLitros">
+                        <label class="form-label fw-semibold">Litros de Combustible</label>
+                        <input type="number" step="0.01" name="litros" class="form-control" value="0.00" placeholder="Ej: 120.00">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Kilometraje Actual (Odómetro)</label>
-                        <input type="number" step="0.1" name="kilometraje" class="form-control" required placeholder="Ej: 125000">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Monto / Costo ($)</label>
+                        <label class="form-label fw-semibold" id="lblMonto">Monto / Costo ($)</label>
                         <input type="number" step="0.01" name="monto_costo" class="form-control" value="0.00">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Foto del Ticket / Factura</label>
-                        <input type="file" name="foto_ticket" class="form-control" accept="image/*" capture="environment">
+                        <label class="form-label fw-semibold" id="lblFotoTicket">Foto del Recibo / Factura</label>
+                        <input type="file" name="foto_ticket" id="fotoTicket" class="form-control" accept="image/*">
+                        <small class="text-muted">Puedes tomar la foto o elegirla del archivo del teléfono.</small>
+                        <small class="text-danger d-none" id="hintPeaje">El peaje exige la foto del recibo de peaje.</small>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Foto del Tablero / Odómetro</label>
-                        <input type="file" name="foto_odometro" class="form-control" accept="image/*" capture="environment">
+                    <div class="mb-3" id="grpOdometro">
+                        <label class="form-label fw-semibold">Foto del Tablero / Odómetro (si aplica)</label>
+                        <input type="file" name="foto_odometro" class="form-control" accept="image/*">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Detalles / Observaciones</label>
                         <textarea name="detalles" class="form-control" rows="2" placeholder="Notas adicionales del gasto..."></textarea>
                     </div>
-                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold">Guardar Registro</button>
+                    <button type="submit" class="btn btn-warning w-100 py-3 fw-bold">Guardar gasto</button>
                 </form>
             </div>
         </div>
+
+        <!-- 4) MIS REGISTROS DE GASTOS -->
+        <div class="card card-tabla shadow-sm mb-4">
+            <div class="card-header"><span class="seccion-num">4</span>Mis últimos registros de gastos</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>Fecha</th><th>Tipo</th><th>Viaje</th><th>KM</th><th>Litros</th><th>Costo</th><th>Estado</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in eventos %}
+                            <tr>
+                                <td>{{ ev.fecha.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ ev.tipo }}</td>
+                                <td>{% if ev.viaje %}#{{ ev.viaje.id }} {{ ev.viaje.origen }}➔{{ ev.viaje.destino }}{% else %}—{% endif %}</td>
+                                <td>{{ ev.kilometraje|int }}</td>
+                                <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
+                                <td>{% if ev.moneda == 'BS' %}Bs {{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% else %}${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% endif %}</td>
+                                <td>
+                                    {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
+                                    {% elif ev.estado == 'Rechazado' %}<span class="badge bg-danger">Rechazado</span>
+                                    {% else %}<span class="badge bg-warning text-dark">Pendiente</span>{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center text-muted">Aún no has enviado registros.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5) MI REPORTE FINANCIERO -->
+        <div class="card card-reporte shadow-sm mb-4">
+            <div class="card-header"><span class="seccion-num">5</span>Mi reporte financiero por viaje (¿cuánto me quedó?)</div>
+            <div class="card-body">
+                <form action="{{ request.script_root }}/reporte/financiero/excel" method="GET" class="row g-2 align-items-end" target="_blank" id="finForm">
+                    <div class="col-md-4">
+                        <label class="form-label small">Desde</label>
+                        <input type="date" name="fecha_desde" id="fd" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Hasta</label>
+                        <input type="date" name="fecha_hasta" id="fh" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-md-4 d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-sm">📊 Excel</button>
+                    </div>
+                </form>
+                <div class="mt-2">
+                    <a href="{{ request.script_root }}/reporte/financiero/pdf" target="_blank" class="btn btn-outline-danger btn-sm" id="pdfLink">📄 PDF</a>
+                    <small class="text-muted d-block mt-1">Muestra flete, comisión, gastos (peajes/combustible) y ganancia neta de tus viajes.</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-info small d-flex align-items-center gap-2" id="gpsStatus">
+            <span class="spinner-border spinner-border-sm"></span>
+            Activando envío de ubicación GPS...
+        </div>
+        {% else %}
+        <div class="alert alert-warning">Cuando el administrador te asigne un vehículo podrás registrar viajes, cobros y gastos.</div>
         {% endif %}
     </div>
 
-    <!-- CRÉDITOS DE DESARROLLO -->
     <footer class="text-center py-3 text-muted small mt-auto bg-white border-top">
         Desarrollado por <strong>RAUL E. HERNANDEZ A.</strong><br>
         📞 Teléfono: 0412-880-76-41 | ✉️ Correo: raulenriqueha1979@gmail.com
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function transmitirUbicacion() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    fetch('/api/actualizar-gps', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            latitud: position.coords.latitude,
-                            longitud: position.coords.longitude
-                        })
-                    });
-                }, function(err) {
-                    console.log("GPS no activado.");
-                }, { enableHighAccuracy: true });
+        // --- Formulario de gasto: alternar campos según tipo (Combustible $ / Peaje Bs) ---
+        (function () {
+            var sel = document.getElementById('tipoGasto');
+            if (!sel) return;
+            var lblMonto = document.getElementById('lblMonto');
+            var lblFoto = document.getElementById('lblFotoTicket');
+            var hintPeaje = document.getElementById('hintPeaje');
+            var grpLitros = document.getElementById('grpLitros');
+            var grpKm = document.getElementById('grpKm');
+            var grpOdo = document.getElementById('grpOdometro');
+            var form = document.getElementById('formGasto');
+            var foto = document.getElementById('fotoTicket');
+            function toggle() {
+                var esPeaje = sel.value === 'Peaje';
+                var esCombustible = sel.value === 'Combustible';
+                lblMonto.textContent = esPeaje ? 'Monto del Peaje (Bs)' : 'Monto / Costo ($)';
+                lblFoto.textContent = esPeaje ? 'Foto del Recibo de Peaje (obligatoria)' : 'Foto del Recibo / Factura';
+                hintPeaje.classList.toggle('d-none', !esPeaje);
+                grpLitros.classList.toggle('d-none', !esCombustible);
+                grpKm.classList.toggle('d-none', esPeaje);
+                grpOdo.classList.toggle('d-none', esPeaje);
             }
+            sel.addEventListener('change', toggle);
+            toggle();
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    if (sel.value === 'Peaje' && foto && foto.files.length === 0) {
+                        e.preventDefault();
+                        alert('Para registrar un peaje debes anexar la foto del recibo de peaje.');
+                    }
+                });
+            }
+        })();
+
+        function setEstado(clase, texto) {
+            var el = document.getElementById('gpsStatus');
+            if (!el) return;
+            el.className = 'alert small d-flex align-items-center gap-2 alert-' + clase;
+            el.textContent = texto;
+        }
+        function reportarEstado(activo) {
+            fetch('{{ request.script_root }}/api/gps/estado', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activo: activo })
+            }).catch(function(){});
+        }
+        function transmitirUbicacion() {
+            if (!("geolocation" in navigator)) {
+                setEstado('danger', 'Este dispositivo no soporta GPS. El rastreo está APAGADO.');
+                reportarEstado(false);
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(function(position) {
+                fetch('{{ request.script_root }}/api/actualizar-gps', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        latitud: position.coords.latitude,
+                        longitud: position.coords.longitude
+                    })
+                }).then(function(){
+                    var hora = new Date().toLocaleTimeString();
+                    setEstado('success', 'GPS ENCENDIDO. Ubicación enviada al centro de control (' + hora + ').');
+                }).catch(function(){
+                    setEstado('warning', 'No se pudo enviar la ubicación. Reintentando...');
+                });
+            }, function(err) {
+                setEstado('danger', 'GPS APAGADO. Activa la ubicación: se notificará al centro de control.');
+                reportarEstado(false);
+            }, { enableHighAccuracy: true });
         }
         setInterval(transmitirUbicacion, 30000);
         transmitirUbicacion();
+
+        function calcComision() {
+            var flete = parseFloat(document.getElementById('montoFlete').value) || 0;
+            var pct = {{ comision_pct }};
+            document.getElementById('comisionEstimada').textContent = '$' + (flete * pct / 100).toFixed(2);
+        }
+        var mf = document.getElementById('montoFlete');
+        if (mf) { mf.addEventListener('input', calcComision); calcComision(); }
+
+        function syncPdf() {
+            var fd = document.getElementById('fd'), fh = document.getElementById('fh'), pdf = document.getElementById('pdfLink');
+            if (!pdf) return;
+            var params = [];
+            if (fd && fd.value) params.push('fecha_desde=' + fd.value);
+            if (fh && fh.value) params.push('fecha_hasta=' + fh.value);
+            pdf.href = '{{ request.script_root }}/reporte/financiero/pdf' + (params.length ? '?' + params.join('&') : '');
+        }
+        var fdEl = document.getElementById('fd'), fhEl = document.getElementById('fh');
+        if (fdEl) fdEl.addEventListener('change', syncPdf);
+        if (fhEl) fhEl.addEventListener('change', syncPdf);
     </script>
 </body>
 </html>

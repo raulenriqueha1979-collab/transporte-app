@@ -6,6 +6,7 @@
     <title>Dashboard - Sistema Integral de Transporte</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
         .card-custom { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
@@ -13,6 +14,7 @@
         .form-control:focus, .form-select:focus { background-color: #0f172a; color: #ffffff; border-color: #3b82f6; }
         .nav-pills .nav-link.active { background-color: #2563eb; }
         .nav-pills .nav-link { color: #94a3b8; }
+        #mapaFlota { height: 420px; border-radius: 12px; }
     </style>
 </head>
 <body>
@@ -24,13 +26,15 @@
         </a>
         <div class="d-flex align-items-center">
             <span class="text-light me-3 small"><i class="fa-solid fa-user-gear me-1"></i> {{ current_user.nombre if current_user.nombre else current_user.username }} ({{ current_user.rol|upper if current_user.rol else 'USUARIO' }})</span>
-            <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-power-off me-1"></i>Salir</a>
+            <a href="{{ request.script_root }}/admin/auditoria" class="btn btn-outline-warning btn-sm me-2"><i class="fa-solid fa-clipboard-list me-1"></i>Auditoría</a>
+            <a href="{{ request.script_root }}/ayuda" class="btn btn-outline-info btn-sm me-2"><i class="fa-solid fa-circle-question me-1"></i>Ayuda</a>
+            <a href="{{ request.script_root }}/logout" class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-power-off me-1"></i>Salir</a>
         </div>
     </div>
 </nav>
 
 <div class="container-fluid p-4">
-    
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -69,27 +73,61 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-info">
+                <span class="text-secondary small fw-bold">TASA DE PLANTA (Bs/$)</span>
+                <h3 class="fw-bold mt-1 text-info">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-info">
+                <span class="text-secondary small fw-bold">TASA BCV (Bs/$)</span>
+                <h3 class="fw-bold mt-1 text-info">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card-custom p-3 border-start border-4 border-warning">
+                <span class="text-secondary small fw-bold">% COMISIÓN CHOFER</span>
+                <h3 class="fw-bold mt-1 text-warning">{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}%</h3>
+                <small class="text-secondary">{% if current_user.rol == 'admin' %}Edítalas en la pestaña "Asignar Viaje".{% else %}Las modifica Luis (administración).{% endif %}</small>
+            </div>
+        </div>
+    </div>
+
     <div class="card-custom p-4">
-        <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
+        <ul class="nav nav-pills mb-4 flex-wrap" id="pills-tab" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active" id="pills-vehiculos-tab" data-bs-toggle="pill" data-bs-target="#pills-vehiculos" type="button"><i class="fa-solid fa-truck me-2"></i>Vehículos</button>
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-vehiculos" type="button"><i class="fa-solid fa-truck me-2"></i>Vehículos</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="pills-choferes-tab" data-bs-toggle="pill" data-bs-target="#pills-choferes" type="button"><i class="fa-solid fa-id-card me-2"></i>Choferes</button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-choferes" type="button"><i class="fa-solid fa-id-card me-2"></i>Choferes</button>
             </li>
             <li class="nav-item">
-                <button class="nav-link" id="pills-viajes-tab" data-bs-toggle="pill" data-bs-target="#pills-viajes" type="button"><i class="fa-solid fa-route me-2"></i>Asignar Viaje</button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-viajes" type="button"><i class="fa-solid fa-route me-2"></i>Asignar Viaje</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link position-relative" data-bs-toggle="pill" data-bs-target="#pills-mantenimiento" type="button">
+                    <i class="fa-solid fa-screwdriver-wrench me-2"></i>Mantenimiento
+                    {% if eventos_pendientes %}<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ eventos_pendientes|length }}</span>{% endif %}
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-gps" type="button"><i class="fa-solid fa-location-dot me-2"></i>Monitoreo GPS</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-reportes" type="button"><i class="fa-solid fa-file-lines me-2"></i>Reportes</button>
             </li>
         </ul>
 
         <div class="tab-content" id="pills-tabContent">
-            
+
             <!-- TAB VEHÍCULOS -->
             <div class="tab-pane fade show active" id="pills-vehiculos">
                 <div class="row g-4">
                     <div class="col-md-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-plus me-2 text-primary"></i>Registrar Vehículo</h5>
-                        <form action="/admin/crear-vehiculo" method="POST">
+                        <form action="{{ request.script_root }}/admin/crear-vehiculo" method="POST">
                             <div class="mb-3">
                                 <label class="form-label small">Placa</label>
                                 <input type="text" name="placa" class="form-control" placeholder="EJ: A12BC3" required>
@@ -110,28 +148,25 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Placa</th>
-                                        <th>Modelo</th>
-                                        <th>KM Actual</th>
-                                        <th>Estatus</th>
-                                    </tr>
+                                    <tr><th>Placa</th><th>Modelo</th><th>KM Actual</th><th>Estatus</th><th></th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <tr>
-                                            <td class="fw-bold text-primary">{{ veh.placa }}</td>
-                                            <td>{{ veh.modelo }}</td>
-                                            <td>{{ veh.kilometraje_actual if veh.kilometraje_actual else 0 }} km</td>
-                                            <td><span class="badge bg-success">{{ veh.estado if veh.estado else 'Activo' }}</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for veh in vehiculos %}
+                                    <tr>
+                                        <td class="fw-bold text-primary">{{ veh.placa }}</td>
+                                        <td>{{ veh.modelo }}</td>
+                                        <td>{{ veh.kilometraje_actual if veh.kilometraje_actual else 0 }} km</td>
+                                        <td><span class="badge bg-success">{{ veh.estado if veh.estado else 'Activo' }}</span></td>
+                                        <td>
+                                            <form action="{{ request.script_root }}/admin/eliminar-vehiculo/{{ veh.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar el vehículo {{ veh.placa }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar vehículo"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                        </td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="4" class="text-center text-secondary">No hay vehículos registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="5" class="text-center text-secondary">No hay vehículos registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
@@ -144,10 +179,18 @@
                 <div class="row g-4">
                     <div class="col-md-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-user-plus me-2 text-info"></i>Registrar Chofer</h5>
-                        <form action="/admin/crear-chofer" method="POST">
+                        <form action="{{ request.script_root }}/admin/crear-chofer" method="POST">
                             <div class="mb-3">
                                 <label class="form-label small">Nombre Completo</label>
                                 <input type="text" name="nombre" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small">Cédula</label>
+                                <input type="text" name="cedula" class="form-control" placeholder="Ej: V-12345678">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small">Teléfono (para GPS)</label>
+                                <input type="text" name="telefono" class="form-control" placeholder="Ej: 04128807641">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">Usuario (Login)</label>
@@ -161,11 +204,9 @@
                                 <label class="form-label small">Asignar Vehículo</label>
                                 <select name="vehiculo_id" class="form-select">
                                     <option value="none">Sin asignar</option>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-info text-white w-100"><i class="fa-solid fa-save me-2"></i>Guardar Chofer</button>
@@ -176,26 +217,37 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Usuario</th>
-                                        <th>Estado</th>
-                                    </tr>
+                                    <tr><th>Nombre</th><th>Usuario</th><th>Teléfono</th><th>Vehículo</th><th>Reasignar</th><th></th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if choferes %}
-                                        {% for chf in choferes %}
-                                        <tr>
-                                            <td>{{ chf.nombre if chf.nombre else chf.username }}</td>
-                                            <td>{{ chf.username }}</td>
-                                            <td><span class="badge bg-info text-dark">Activo</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for chf in choferes %}
+                                    <tr>
+                                        <td>{{ chf.nombre if chf.nombre else chf.username }}</td>
+                                        <td>{{ chf.username }}</td>
+                                        <td>{{ chf.telefono or '—' }}</td>
+                                        <td>{% if chf.vehiculo %}<span class="badge bg-primary">{{ chf.vehiculo.placa }}</span>{% else %}<span class="text-secondary">Sin asignar</span>{% endif %}</td>
+                                        <td>
+                                            <form action="{{ request.script_root }}/admin/asignar-vehiculo" method="POST" class="d-flex gap-1">
+                                                <input type="hidden" name="chofer_id" value="{{ chf.id }}">
+                                                <select name="vehiculo_id" class="form-select form-select-sm">
+                                                    <option value="none">Sin asignar</option>
+                                                    {% for veh in vehiculos %}
+                                                    <option value="{{ veh.id }}" {% if chf.vehiculo_id == veh.id %}selected{% endif %}>{{ veh.placa }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <button class="btn btn-sm btn-outline-info" type="submit"><i class="fa-solid fa-check"></i></button>
+                                            </form>
+                                        </td>
+                                        <td>
+                                            <form action="{{ request.script_root }}/admin/eliminar-chofer/{{ chf.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar al chofer {{ chf.nombre or chf.username }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar chofer"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                        </td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="3" class="text-center text-secondary">No hay choferes registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="6" class="text-center text-secondary">No hay choferes registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
@@ -205,28 +257,56 @@
 
             <!-- TAB VIAJES -->
             <div class="tab-pane fade" id="pills-viajes">
+                <div class="card bg-dark border-success mb-4">
+                    <div class="card-header fw-bold text-success"><i class="fa-solid fa-money-bill-transfer me-2"></i>Tasas y comisión — vigentes</div>
+                    <div class="card-body">
+                        <div class="row text-center mb-3">
+                            <div class="col-md-4"><div class="small text-secondary">Tasa de planta (Bs/$)</div><div class="h5 text-info mb-0">{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}</div></div>
+                            <div class="col-md-4"><div class="small text-secondary">Tasa BCV (Bs/$)</div><div class="h5 text-info mb-0">{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}</div></div>
+                            <div class="col-md-4"><div class="small text-secondary">% Comisión chofer</div><div class="h5 text-warning mb-0">{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}%</div></div>
+                        </div>
+                        {% if current_user.rol == 'admin' %}
+                        <form action="{{ request.script_root }}/admin/tasas" method="POST" class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small">Tasa de planta (Bs/$)</label>
+                                <input type="number" step="0.01" name="tasa_planta" class="form-control form-control-sm" value="{{ "%.2f"|format(tasa_planta if tasa_planta else 0.0) }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Tasa BCV (Bs/$)</label>
+                                <input type="number" step="0.01" name="tasa_bcv" class="form-control form-control-sm" value="{{ "%.2f"|format(tasa_bcv if tasa_bcv else 0.0) }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">% Comisión chofer</label>
+                                <input type="number" step="0.1" name="comision_pct" class="form-control form-control-sm" value="{{ "%.1f"|format(comision_pct if comision_pct else 0.0) }}">
+                            </div>
+                            <div class="col-md-3 d-grid">
+                                <button type="submit" class="btn btn-success btn-sm"><i class="fa-solid fa-floppy-disk me-1"></i>Guardar (Luis)</button>
+                            </div>
+                            <div class="col-12"><small class="text-secondary">Solo Luis (administración) puede modificarlas. Todo cambio queda en Auditoría.</small></div>
+                        </form>
+                        {% else %}
+                        <p class="text-secondary small mb-0">Estas tasas y la comisión solo las modifica Luis (administración).</p>
+                        {% endif %}
+                    </div>
+                </div>
                 <div class="row g-4">
                     <div class="col-md-4">
                         <h5 class="fw-bold mb-3"><i class="fa-solid fa-truck-ramp-box me-2 text-warning"></i>Crear Nueva Hoja de Ruta</h5>
-                        <form action="/admin/crear-viaje" method="POST">
+                        <form action="{{ request.script_root }}/admin/crear-viaje" method="POST">
                             <div class="mb-3">
                                 <label class="form-label small">Vehículo</label>
                                 <select name="vehiculo_id" class="form-select" required>
-                                    {% if vehiculos %}
-                                        {% for veh in vehiculos %}
-                                        <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label small">Chofer</label>
                                 <select name="chofer_id" class="form-select" required>
-                                    {% if choferes %}
-                                        {% for chf in choferes %}
-                                        <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
-                                        {% endfor %}
-                                    {% endif %}
+                                    {% for chf in choferes %}
+                                    <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                             <div class="row g-2 mb-3">
@@ -246,7 +326,7 @@
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label small">% Comisión Chofer</label>
-                                    <input type="number" step="0.1" name="porcentaje_comision" class="form-control" value="10.0" required>
+                                    <input type="number" step="0.1" name="porcentaje_comision" class="form-control" value="{{ "%.1f"|format(comision_pct if comision_pct else 10.0) }}" required>
                                 </div>
                             </div>
                             <button type="submit" class="btn btn-warning w-100"><i class="fa-solid fa-paper-plane me-2"></i>Asignar Viaje</button>
@@ -257,30 +337,282 @@
                         <div class="table-responsive">
                             <table class="table table-dark table-striped align-middle">
                                 <thead>
-                                    <tr>
-                                        <th>Ruta</th>
-                                        <th>Flete</th>
-                                        <th>Comisión</th>
-                                        <th>Estatus</th>
-                                    </tr>
+                                    <tr><th>Fecha</th><th>Ruta</th><th>Chofer</th><th>Flete</th><th>Comisión</th><th>Pago del viaje</th><th>Estado</th><th>Guía</th><th></th></tr>
                                 </thead>
                                 <tbody>
-                                    {% if viajes %}
-                                        {% for vj in viajes %}
-                                        <tr>
-                                            <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
-                                            <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
-                                            <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ vj.porcentaje_comision if vj.porcentaje_comision else 0 }}%)</td>
-                                            <td><span class="badge bg-warning text-dark">{{ vj.estado if vj.estado else 'Asignado' }}</span></td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for vj in viajes %}
+                                    <tr>
+                                        <td>{{ vj.fecha.strftime('%Y-%m-%d') }}</td>
+                                        <td>{{ vj.origen }} ➔ {{ vj.destino }}</td>
+                                        <td>{{ vj.chofer.nombre if vj.chofer else 'N/A' }}</td>
+                                        <td>${{ "%.2f"|format(vj.monto_flete if vj.monto_flete else 0.0) }}</td>
+                                        <td class="text-success">${{ "%.2f"|format(vj.monto_comision if vj.monto_comision else 0.0) }} ({{ "%.2f"|format(vj.porcentaje_comision if vj.porcentaje_comision else 0.0) }}%)</td>
+                                        <td>{% if vj.monto_pagado and vj.monto_pagado > 0 %}<span class="fw-semibold text-success">{{ "%.2f"|format(vj.monto_pagado) }} {{ 'Bs' if vj.moneda_pago == 'BS' else '$' }}</span>{% if vj.moneda_pago == 'BS' %}<small class="d-block text-info">{% if tasa_planta and tasa_planta > 0 %}≈ ${{ "%.2f"|format(vj.monto_pagado / tasa_planta) }} (planta {{ "%.2f"|format(tasa_planta) }}){% endif %}{% if tasa_bcv and tasa_bcv > 0 %} · ${{ "%.2f"|format(vj.monto_pagado / tasa_bcv) }} (BCV {{ "%.2f"|format(tasa_bcv) }}){% endif %}</small>{% endif %}{% if vj.foto_pago %} <a href="{{ request.script_root }}/uploads/{{ vj.foto_pago }}" target="_blank" class="badge bg-success text-decoration-none">Ver billetes</a>{% endif %}{% else %}<span class="text-secondary">Sin pago</span>{% endif %}</td>
+                                        <td><span class="badge bg-info text-dark">{{ vj.estado }}</span></td>
+                                        <td>{% if vj.guia %}<a href="{{ request.script_root }}/uploads/{{ vj.guia }}" target="_blank" class="badge bg-secondary text-decoration-none">Ver Guía</a>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+                                        <td>
+                                            <div class="d-flex gap-1">
+                                            <button type="button" class="btn btn-sm btn-outline-warning btn-editar-viaje"
+                                                data-id="{{ vj.id }}" data-origen="{{ vj.origen }}" data-destino="{{ vj.destino }}"
+                                                data-flete="{{ vj.monto_flete or 0 }}" data-pct="{{ vj.porcentaje_comision or 0 }}"
+                                                title="Corregir con clave"><i class="fa-solid fa-pen"></i></button>
+                                            <form action="{{ request.script_root }}/admin/eliminar-viaje/{{ vj.id }}" method="POST"
+                                                  onsubmit="return confirm('¿Eliminar el viaje #{{ vj.id }}? Esta acción no se puede deshacer.');">
+                                                <button class="btn btn-sm btn-outline-danger" title="Eliminar viaje"><i class="fa-solid fa-trash"></i></button>
+                                            </form>
+                                            </div>
+                                        </td>
+                                    </tr>
                                     {% else %}
-                                        <tr>
-                                            <td colspan="4" class="text-center text-secondary">No hay viajes registrados.</td>
-                                        </tr>
-                                    {% endif %}
+                                    <tr><td colspan="9" class="text-center text-secondary">No hay viajes registrados.</td></tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB MANTENIMIENTO -->
+            <div class="tab-pane fade" id="pills-mantenimiento">
+                <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Registros de Combustible y Mantenimiento</h5>
+                <p class="text-secondary small">Los choferes registran <b>COMBUSTIBLE</b>, <b>CAMBIO DE CAUCHOS</b>, <b>REPUESTOS</b> y <b>OTROS</b> (en $), y <b>PEAJE</b> (en Bs, con foto del recibo). El <b>cambio de aceite y filtro, aceites y otros gastos</b> (en $) los registra Luis desde el formulario de abajo. Confirma o rechaza cada registro.</p>
+
+                {% if current_user.rol == 'admin' %}
+                <div class="card bg-dark border-warning mb-4">
+                    <div class="card-header fw-bold text-warning"><i class="fa-solid fa-oil-can me-2"></i>Registrar Gasto — Luis (en $)</div>
+                    <div class="card-body">
+                        <form action="{{ request.script_root }}/admin/registrar-aceite-filtro" method="POST" enctype="multipart/form-data" class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label small">Vehículo</label>
+                                <select name="vehiculo_id" class="form-select form-select-sm" required>
+                                    <option value="none">— Seleccionar —</option>
+                                    {% for veh in vehiculos %}
+                                    <option value="{{ veh.id }}">{{ veh.placa }} · {{ veh.modelo }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Tipo de Gasto</label>
+                                <select name="tipo" class="form-select form-select-sm" required>
+                                    <option value="Aceite/Filtro">CAMBIO DE ACEITE Y FILTRO</option>
+                                    <option value="Aceites">ACEITES</option>
+                                    <option value="Cauchos">CAMBIO DE CAUCHOS</option>
+                                    <option value="Repuestos">REPUESTOS</option>
+                                    <option value="Reparacion">REPARACIÓN</option>
+                                    <option value="Taller">TALLER</option>
+                                    <option value="Combustible">COMBUSTIBLE</option>
+                                    <option value="Otros">OTROS</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Fecha</label>
+                                <input type="date" name="fecha" class="form-control form-control-sm" value="{{ hoy }}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Kilometraje</label>
+                                <input type="number" step="0.1" name="kilometraje" class="form-control form-control-sm" value="0">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Monto ($)</label>
+                                <input type="number" step="0.01" name="monto_costo" class="form-control form-control-sm" value="0.00">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small">Foto recibo</label>
+                                <input type="file" name="foto_ticket" class="form-control form-control-sm" accept="image/*">
+                            </div>
+                            <div class="col-md-1 d-grid">
+                                <button class="btn btn-warning btn-sm fw-bold" type="submit">Guardar</button>
+                            </div>
+                            <div class="col-12">
+                                <input type="text" name="detalles" class="form-control form-control-sm" placeholder="Detalles / observaciones (opcional)">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead>
+                            <tr><th>Fecha</th><th>Tipo</th><th>Vehículo</th><th>Chofer</th><th>Viaje</th><th>KM</th><th>Litros</th><th>Costo</th><th>Fotos</th><th>Estado</th><th>Acción</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in eventos %}
+                            <tr>
+                                <td>{{ ev.fecha.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ ev.tipo }}</td>
+                                <td>{{ ev.vehiculo.placa if ev.vehiculo else 'N/A' }}</td>
+                                <td>{{ ev.chofer.nombre if ev.chofer else 'N/A' }}</td>
+                                <td>{% if ev.viaje %}<span class="badge bg-dark">#{{ ev.viaje.id }}</span>{% else %}—{% endif %}</td>
+                                <td>{{ ev.kilometraje|int }}</td>
+                                <td>{{ "%.2f"|format(ev.litros if ev.litros else 0.0) }}</td>
+                                <td>{% if ev.moneda == 'BS' %}Bs {{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% else %}${{ "%.2f"|format(ev.monto_costo if ev.monto_costo else 0.0) }}{% endif %}</td>
+                                <td>
+                                    {% if ev.foto_ticket %}<a href="{{ request.script_root }}/uploads/{{ ev.foto_ticket }}" target="_blank" class="badge bg-secondary text-decoration-none">Recibo</a>{% endif %}
+                                    {% if ev.foto_odometro %}<a href="{{ request.script_root }}/uploads/{{ ev.foto_odometro }}" target="_blank" class="badge bg-secondary text-decoration-none">Odómetro</a>{% endif %}
+                                    {% if not ev.foto_ticket and not ev.foto_odometro %}<span class="text-secondary">—</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if ev.estado == 'Confirmado' %}<span class="badge bg-success">Confirmado</span>
+                                    {% elif ev.estado == 'Rechazado' %}<span class="badge bg-danger">Rechazado</span>
+                                    {% else %}<span class="badge bg-warning text-dark">Pendiente</span>{% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-1">
+                                    {% if ev.estado == 'Pendiente' and current_user.rol == 'admin' %}
+                                    <form action="{{ request.script_root }}/admin/confirmar-evento/{{ ev.id }}" method="POST" class="d-flex gap-1">
+                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success" title="Aprobar (OK)"><i class="fa-solid fa-check"></i></button>
+                                        <button name="accion" value="rechazar" class="btn btn-sm btn-outline-danger" title="Rechazar"><i class="fa-solid fa-xmark"></i></button>
+                                    </form>
+                                    {% elif ev.estado == 'Pendiente' %}
+                                    <span class="text-secondary small">Pendiente de Luis</span>
+                                    {% elif ev.estado == 'Rechazado' and current_user.rol == 'admin' %}
+                                    <form action="{{ request.script_root }}/admin/confirmar-evento/{{ ev.id }}" method="POST">
+                                        <button name="accion" value="confirmar" class="btn btn-sm btn-success" title="Poner OK (aprobar)"><i class="fa-solid fa-check"></i> OK</button>
+                                    </form>
+                                    {% endif %}
+                                    <button type="button" class="btn btn-sm btn-outline-warning btn-editar-evento"
+                                        data-id="{{ ev.id }}" data-tipo="{{ ev.tipo }}"
+                                        data-kilometraje="{{ ev.kilometraje or 0 }}" data-litros="{{ ev.litros or 0 }}"
+                                        data-monto="{{ ev.monto_costo or 0 }}" data-detalles="{{ ev.detalles or '' }}"
+                                        title="Corregir con clave"><i class="fa-solid fa-pen"></i></button>
+                                    <form action="{{ request.script_root }}/admin/eliminar-evento/{{ ev.id }}" method="POST"
+                                          onsubmit="return confirm('¿Eliminar el registro #{{ ev.id }}? Esta acción no se puede deshacer.');">
+                                        <button class="btn btn-sm btn-outline-danger" title="Eliminar registro"><i class="fa-solid fa-trash"></i></button>
+                                    </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="11" class="text-center text-secondary">No hay registros de mantenimiento.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB GPS -->
+            <div class="tab-pane fade" id="pills-gps">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-location-dot me-2 text-danger"></i>Monitoreo de Flota en Tiempo Real</h5>
+                    <button class="btn btn-sm btn-outline-light" onclick="cargarFlota()"><i class="fa-solid fa-rotate me-1"></i>Actualizar</button>
+                </div>
+
+                <!-- Alerta de estado GPS por chofer (encendido / apagado) -->
+                <div id="alertaGps" class="alert alert-secondary small mb-3">Verificando estado del GPS de los choferes...</div>
+                <div class="table-responsive mb-4">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead><tr><th>Chofer</th><th>Vehículo</th><th>Teléfono</th><th>Estado GPS</th><th>Últ. señal</th></tr></thead>
+                        <tbody id="tablaEstadoGps">
+                            <tr><td colspan="5" class="text-center text-secondary">Cargando estado del GPS...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="mapaFlota" class="mb-3"></div>
+                <div class="table-responsive">
+                    <table class="table table-dark table-striped align-middle">
+                        <thead><tr><th>Chofer</th><th>Vehículo</th><th>Teléfono</th><th>Última posición</th><th>Fecha</th></tr></thead>
+                        <tbody id="tablaFlota">
+                            <tr><td colspan="5" class="text-center text-secondary">Pulsa "Actualizar" para cargar las ubicaciones.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB REPORTES -->
+            <div class="tab-pane fade" id="pills-reportes">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <div class="card-custom p-3 h-100">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-route me-2 text-info"></i>Reporte de Viajes y Comisiones</h5>
+                            <form action="{{ request.script_root }}/admin/reporte/pdf" method="GET" id="formViajes">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6">
+                                        <label class="form-label small">Desde</label>
+                                        <input type="date" name="fecha_desde" id="v_desde" class="form-control">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Hasta</label>
+                                        <input type="date" name="fecha_hasta" id="v_hasta" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" formaction="{{ request.script_root }}/admin/reporte/pdf" class="btn btn-danger w-100"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button>
+                                    <button type="submit" formaction="{{ request.script_root }}/admin/reporte/excel" class="btn btn-success w-100"><i class="fa-solid fa-file-excel me-1"></i>Excel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card-custom p-3 h-100">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-screwdriver-wrench me-2 text-warning"></i>Reporte de Mantenimiento y Combustible</h5>
+                            <form method="GET">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-4">
+                                        <label class="form-label small">Desde</label>
+                                        <input type="date" name="fecha_desde" class="form-control">
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Hasta</label>
+                                        <input type="date" name="fecha_hasta" class="form-control">
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Estado</label>
+                                        <select name="estado" class="form-select">
+                                            <option value="">Todos</option>
+                                            <option value="Pendiente">Pendiente</option>
+                                            <option value="Confirmado">Confirmado</option>
+                                            <option value="Rechazado">Rechazado</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" formaction="{{ request.script_root }}/admin/reporte/mantenimiento/pdf" class="btn btn-danger w-100"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button>
+                                    <button type="submit" formaction="{{ request.script_root }}/admin/reporte/mantenimiento/excel" class="btn btn-success w-100"><i class="fa-solid fa-file-excel me-1"></i>Excel</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="card-custom p-3">
+                            <h5 class="fw-bold mb-3"><i class="fa-solid fa-sack-dollar me-2 text-success"></i>Informe Financiero: Ingresos, Gastos y Ganancias</h5>
+                            <p class="text-secondary small">En <strong>General</strong> suma los viajes y gastos de cada chofer; al elegir un <strong>chofer</strong> detalla cada viaje con sus egresos. Filtra por fecha y transporte.</p>
+                            <form action="{{ request.script_root }}/reporte/financiero/pdf" method="GET" target="_blank">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Desde</label>
+                                        <input type="date" name="fecha_desde" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Hasta</label>
+                                        <input type="date" name="fecha_hasta" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Chofer</label>
+                                        <select name="chofer_id" class="form-select">
+                                            <option value="none">General (todos)</option>
+                                            {% for chf in choferes %}
+                                            <option value="{{ chf.id }}">{{ chf.nombre if chf.nombre else chf.username }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Transporte / Vehículo</label>
+                                        <select name="vehiculo_id" class="form-select">
+                                            <option value="none">Todos</option>
+                                            {% for veh in vehiculos %}
+                                            <option value="{{ veh.id }}">{{ veh.placa }} - {{ veh.modelo }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" formaction="{{ request.script_root }}/reporte/financiero/pdf" class="btn btn-danger w-100"><i class="fa-solid fa-file-pdf me-1"></i>PDF</button>
+                                    <button type="submit" formaction="{{ request.script_root }}/reporte/financiero/excel" class="btn btn-success w-100"><i class="fa-solid fa-file-excel me-1"></i>Excel</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -290,10 +622,194 @@
     </div>
 </div>
 
+<!-- MODAL: Corregir Evento (con clave de autorización) -->
+<div class="modal fade" id="modalEvento" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-light">
+      <form action="" method="POST" id="formEditarEvento">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title"><i class="fa-solid fa-pen me-2 text-warning"></i>Corregir Registro <span id="evId"></span></h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning small">Toda corrección queda registrada en auditoría y requiere tu clave de {{ current_user.rol }}.</div>
+          <div class="mb-2"><label class="form-label small">Tipo</label>
+            <input type="text" name="tipo" id="ev_tipo" class="form-control"></div>
+          <div class="row g-2">
+            <div class="col-4 mb-2"><label class="form-label small">KM</label>
+              <input type="number" step="0.1" name="kilometraje" id="ev_km" class="form-control"></div>
+            <div class="col-4 mb-2"><label class="form-label small">Litros</label>
+              <input type="number" step="0.01" name="litros" id="ev_litros" class="form-control"></div>
+            <div class="col-4 mb-2"><label class="form-label small">Costo ($)</label>
+              <input type="number" step="0.01" name="monto_costo" id="ev_monto" class="form-control"></div>
+          </div>
+          <div class="mb-2"><label class="form-label small">Detalles</label>
+            <textarea name="detalles" id="ev_detalles" class="form-control" rows="2"></textarea></div>
+          <div class="mb-2"><label class="form-label small">Motivo de la corrección</label>
+            <input type="text" name="motivo" class="form-control" placeholder="Ej: monto mal digitado" required></div>
+          <div class="mb-2"><label class="form-label small fw-bold text-warning">Clave de autorización ({{ current_user.username }})</label>
+            <input type="password" name="clave_autorizacion" class="form-control" required></div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning">Guardar corrección</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Corregir Viaje (con clave de autorización) -->
+<div class="modal fade" id="modalViaje" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-light">
+      <form action="" method="POST" id="formEditarViaje">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title"><i class="fa-solid fa-pen me-2 text-warning"></i>Corregir Despacho <span id="vjId"></span></h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-warning small">Toda corrección queda registrada en auditoría y requiere tu clave de {{ current_user.rol }}.</div>
+          <div class="row g-2">
+            <div class="col-6 mb-2"><label class="form-label small">Origen</label>
+              <input type="text" name="origen" id="vj_origen" class="form-control"></div>
+            <div class="col-6 mb-2"><label class="form-label small">Destino</label>
+              <input type="text" name="destino" id="vj_destino" class="form-control"></div>
+          </div>
+          <div class="row g-2">
+            <div class="col-6 mb-2"><label class="form-label small">Flete ($)</label>
+              <input type="number" step="0.01" name="monto_flete" id="vj_flete" class="form-control"></div>
+            <div class="col-6 mb-2"><label class="form-label small">% Comisión</label>
+              <input type="number" step="0.1" name="porcentaje_comision" id="vj_pct" class="form-control"></div>
+          </div>
+          <div class="mb-2"><label class="form-label small">Motivo de la corrección</label>
+            <input type="text" name="motivo" class="form-control" placeholder="Ej: flete corregido" required></div>
+          <div class="mb-2"><label class="form-label small fw-bold text-warning">Clave de autorización ({{ current_user.username }})</label>
+            <input type="password" name="clave_autorizacion" class="form-control" required></div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-warning">Guardar corrección</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <footer class="text-center py-3 text-secondary border-top border-secondary mt-5" style="font-size: 0.85rem;">
     Desarrollado por RAUL E. HERNANDEZ A. | 📞 0412-880-76-41 | ✉️ raulenriqueha1979@gmail.com
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let mapaFlota = null;
+    let capaMarcadores = null;
+
+    function initMapa() {
+        if (mapaFlota) return;
+        mapaFlota = L.map('mapaFlota').setView([10.2469, -67.5958], 7); // Maracay por defecto
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(mapaFlota);
+        capaMarcadores = L.layerGroup().addTo(mapaFlota);
+    }
+
+    function cargarFlota() {
+        initMapa();
+        fetch('{{ request.script_root }}/api/gps/flota')
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.getElementById('tablaFlota');
+                capaMarcadores.clearLayers();
+                if (!data.puntos || data.puntos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">No hay ubicaciones registradas todavía.</td></tr>';
+                    return;
+                }
+                let rows = '';
+                const bounds = [];
+                data.puntos.forEach(p => {
+                    rows += `<tr><td>${p.chofer}</td><td>${p.vehiculo}</td><td>${p.telefono}</td><td>${p.latitud.toFixed(5)}, ${p.longitud.toFixed(5)}</td><td>${p.fecha}</td></tr>`;
+                    L.marker([p.latitud, p.longitud]).addTo(capaMarcadores)
+                        .bindPopup(`<b>${p.chofer}</b><br>${p.vehiculo}<br>${p.fecha}`);
+                    bounds.push([p.latitud, p.longitud]);
+                });
+                tbody.innerHTML = rows;
+                if (bounds.length) mapaFlota.fitBounds(bounds, { maxZoom: 14, padding: [30, 30] });
+            });
+    }
+
+    function cargarEstadoGps() {
+        fetch('{{ request.script_root }}/api/gps/estados')
+            .then(r => r.json())
+            .then(data => {
+                const alerta = document.getElementById('alertaGps');
+                const tbody = document.getElementById('tablaEstadoGps');
+                if (!alerta || !tbody) return;
+                const choferes = data.choferes || [];
+                if (choferes.length === 0) {
+                    alerta.className = 'alert alert-secondary small mb-3';
+                    alerta.textContent = 'No hay choferes registrados.';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Sin choferes.</td></tr>';
+                    return;
+                }
+                const apagados = data.apagados || [];
+                if (apagados.length === 0) {
+                    alerta.className = 'alert alert-success small mb-3';
+                    alerta.innerHTML = '✅ Todos los choferes tienen el GPS <b>ENCENDIDO</b>.';
+                } else {
+                    alerta.className = 'alert alert-danger small mb-3';
+                    alerta.innerHTML = '🚨 <b>ALERTA GPS</b> — ubicación APAGADA / sin señal en: ' +
+                        apagados.map(c => c.chofer).join(', ') +
+                        '. (Notificado a master, Luis y Jorge.)';
+                }
+                tbody.innerHTML = choferes.map(c => {
+                    let badge;
+                    if (c.estado === 'encendido') badge = '<span class="badge bg-success">ENCENDIDO</span>';
+                    else if (c.estado === 'apagado') badge = '<span class="badge bg-danger">APAGADO</span>';
+                    else badge = '<span class="badge bg-secondary">SIN DATOS</span>';
+                    return `<tr><td>${c.chofer}</td><td>${c.vehiculo}</td><td>${c.telefono}</td><td>${badge}</td><td>${c.actualizado || '—'}</td></tr>`;
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
+    document.querySelector('[data-bs-target="#pills-gps"]').addEventListener('shown.bs.tab', function () {
+        setTimeout(() => { initMapa(); mapaFlota.invalidateSize(); cargarFlota(); cargarEstadoGps(); }, 200);
+    });
+    // Alerta de GPS siempre vigilada: se refresca cada 30s aunque no estés en la pestaña
+    cargarEstadoGps();
+    setInterval(cargarEstadoGps, 30000);
+
+    // --- Corrección de registros con clave de autorización ---
+    const modalEvento = new bootstrap.Modal(document.getElementById('modalEvento'));
+    document.querySelectorAll('.btn-editar-evento').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const d = btn.dataset;
+            document.getElementById('formEditarEvento').action = '{{ request.script_root }}/admin/editar-evento/' + d.id;
+            document.getElementById('evId').textContent = '#' + d.id;
+            document.getElementById('ev_tipo').value = d.tipo;
+            document.getElementById('ev_km').value = d.kilometraje;
+            document.getElementById('ev_litros').value = d.litros;
+            document.getElementById('ev_monto').value = d.monto;
+            document.getElementById('ev_detalles').value = d.detalles;
+            modalEvento.show();
+        });
+    });
+
+    const modalViaje = new bootstrap.Modal(document.getElementById('modalViaje'));
+    document.querySelectorAll('.btn-editar-viaje').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const d = btn.dataset;
+            document.getElementById('formEditarViaje').action = '{{ request.script_root }}/admin/editar-viaje/' + d.id;
+            document.getElementById('vjId').textContent = '#' + d.id;
+            document.getElementById('vj_origen').value = d.origen;
+            document.getElementById('vj_destino').value = d.destino;
+            document.getElementById('vj_flete').value = d.flete;
+            document.getElementById('vj_pct').value = d.pct;
+            modalViaje.show();
+        });
+    });
+</script>
 </body>
 </html>
